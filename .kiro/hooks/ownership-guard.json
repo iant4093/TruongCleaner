@@ -1,0 +1,13 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "ownership-guard",
+      "description": "Deny file writes outside the builder's folders, by exact repo-relative path (root files README.md, AGENTS.md, LICENSE, .gitignore, .swiftlint.yml; .kiro/, .github/, scripts/hooks/, docs/ except docs/screenshots/). Exit 2 denies.",
+      "trigger": "PreToolUse",
+      "matcher": "fs_write",
+      "timeout_ms": 10000,
+      "action": { "type": "command", "command": "bash scripts/hooks/ownership-guard.sh" }
+    }
+  ]
+}

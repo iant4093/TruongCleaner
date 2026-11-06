@@ -21,4 +21,14 @@ Format: one section per spike or task. Raw logs go in `docs/evidence/`.
 
 ## Wave 0
 
-_S1–S8 results go here._
+### S8: builder dispatch and hooks (task 0.1, 2026-11-06)
+
+| Check | Result | Source |
+|---|---|---|
+| `kiro-cli chat --v3 --agent builder-sonnet --no-interactive --trust-tools=…` runs and returns a report | Yes, exit 0 | `build/dispatch/0.1b.log` |
+| `.kiro/hooks` load without `--trust-workspace` | Yes: PreToolUse `safety-guard` blocked `echo purge check`; Stop `gate-turn` ran with the real session ID | `build/hooks/hooks.log` 23:57:12Z, 23:57:19Z |
+| Hook event fields | `cwd`, `hook_event_name`, `session_id`, `tool_input` (`path`, `text` for `fs_write`), `tool_name` | `build/hooks/last-fs-write-event.json` |
+| Finding: agent-profile `fs_write` deny glob `README.md` also matched `spikes/s0-hooks/README.md` | Fixed: root-only files moved to the exact-path `ownership-guard` hook; re-run allowed the nested README | `build/dispatch/0.1.log`, `0.1b.log` |
+| `ownership-guard` sample paths | 14 cases: 5 allowed, 9 denied, all as intended (`..`, outside repo, root files, `.kiro/`, `docs/`, unknown folder) | Orchestrator test |
+
+Decision: dispatch without `--trust-workspace`.

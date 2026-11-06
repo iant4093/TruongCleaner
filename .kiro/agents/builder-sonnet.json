@@ -23,12 +23,7 @@
         "docs/*.md",
         "docs/briefs/**",
         "docs/research/**",
-        "docs/evidence/**",
-        "README.md",
-        "AGENTS.md",
-        "LICENSE",
-        ".gitignore",
-        ".swiftlint.yml"
+        "docs/evidence/**"
       ]
     },
     "execute_bash": {
@@ -107,12 +102,7 @@
           "docs/*.md",
           "docs/briefs/**",
           "docs/research/**",
-          "docs/evidence/**",
-          "README.md",
-          "AGENTS.md",
-          "LICENSE",
-          ".gitignore",
-          ".swiftlint.yml"
+          "docs/evidence/**"
         ],
         "effect": "deny"
       },
