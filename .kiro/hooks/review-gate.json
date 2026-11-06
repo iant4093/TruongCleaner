@@ -1,0 +1,20 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "build-on-write",
+      "description": "After a write to a Swift file under Packages/ or src/, run an incremental `swift build` of CleanerKit and show errors to the agent. Warnings are errors.",
+      "trigger": "PostToolUse",
+      "matcher": "fs_write",
+      "timeout_ms": 180000,
+      "action": { "type": "command", "command": "bash scripts/hooks/build-on-write.sh" }
+    },
+    {
+      "name": "gate-turn",
+      "description": "When src/, Packages/, scripts/ or the Xcode project changed, block the end of the turn until lint, package tests, the deletion-site check and the Debug build pass. Max 3 blocks per session.",
+      "trigger": "Stop",
+      "timeout_ms": 600000,
+      "action": { "type": "command", "command": "bash scripts/hooks/gate-turn.sh" }
+    }
+  ]
+}

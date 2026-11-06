@@ -1,0 +1,96 @@
+# Tasks
+
+Legend: `[ ]` open, `[~]` in progress, `[x]` done (review passed). Owner: **O**
+orchestrator, **B** builder-sonnet, **I** Ian (hand check). "Par" = tasks with
+the same letter in a wave may run in parallel (disjoint files).
+
+A task is checked only after the orchestrator's review. Each B task gets a
+brief in `docs/briefs/<id>.md`.
+
+## Wave 0: Spikes
+
+| ✓ | ID | Owner | Par | Task | Output |
+|---|---|---|---|---|---|
+| [ ] | 0.1 | O | | Confirm builder dispatch: no-op brief, check hooks fire (S8) | `docs/EVIDENCE.md` S8 |
+| [ ] | 0.2 | B | a | S1 walker benchmark: `spikes/s1-walker/` SwiftPM exe; `getattrlistbulk` vs `FileManager.enumerator` (prefetched keys) vs `fts`, 1 and N workers, on `~/Library` and `/System/Volumes/Data` (read-only); compare with `du -sk` | Table: files/s, wall time, peak RSS, total bytes vs `du` |
+| [ ] | 0.3 | B | b | S3 Trash behavior: `spikes/s3-trash/` on a fixture folder in `spikes/s3-trash/out/`; `trashItem` vs `NSWorkspace.recycle`; collisions; 10k items timing; record resulting URLs | Recommendation + numbers |
+| [ ] | 0.4 | B | c | S4 volume numbers: `spikes/s4-volume/` prints every capacity key, `statfs`, `ATTR_VOL_SPACEUSED`, `tmutil listlocalsnapshots /`, `diskutil apfs list -plist` summary | Numbers; I compares with System Settings ✋ |
+| [ ] | 0.5 | B | d | S5 UI prototype: `spikes/s5-ui/` SwiftUI app with sidebar, icon tiles, grouped form, glass toolbar and clean bar; screenshots light/dark | Screenshots beside System Settings; I approves ✋ |
+| [ ] | 0.6 | B | e | S2 FDA probe app: `spikes/s2-fda/` reports each probe result and opens the deep link | I grants/revokes FDA, reports ✋ |
+| [ ] | 0.7 | O | | S6 CI proof: minimal Xcode project + package on a scratch branch through `xcode-27`; record Xcode version used | CI log link |
+| [ ] | 0.8 | I | | S7 install proof: run `install.sh` from the scratch release and open the DMG path | Notes ✋ |
+| [ ] | 0.9 | O | | Update PLAN decisions D9, D12 and budgets P5 from spike results | PLAN diff |
+
+## Wave 1: Foundation
+
+| ✓ | ID | Owner | Par | Task | Reqs |
+|---|---|---|---|---|---|
+| [ ] | 1.1 | B | | Xcode project (objectVersion 77, synchronized groups), app target `TruongCleaner`, bundle ID `com.iant4093.TruongCleaner`, macOS 26.0, arm64, Swift 6, warnings as errors, links local `CleanerKit`; empty `NavigationSplitView` window with the sidebar from `docs/UI.md` §3 and `IconTile` | UI-01 |
+| [ ] | 1.2 | B | | `Packages/CleanerKit` skeleton: three library targets, `tcbench` exe, test targets, `Fixtures` helper (`FixtureTree`), one passing test per target | — |
+| [ ] | 1.3 | B | a | `scripts/`: `lint.sh` (pinned SwiftLint + checksum), `test.sh package`, `build.sh {debug,release,all}`, `package.sh` (ad-hoc sign, verify, DMG, ZIP, dSYM zip, SHA256SUMS), `install.sh`, `check-workflows.sh`, `check-deletion-sites.sh`, `clean.sh` (removes `build/` only) | DIST-01, DIST-03, SAFE-01 |
+| [ ] | 1.4 | O | a | `.github/workflows/ci.yml`, `dependabot.yml`, `actionlint.yaml`, `.swiftlint.yml`; SHA pins | CI-01..04, DIST-02 |
+| [ ] | 1.5 | O | | README in TruongCam format; LICENSE; first push (after Q5) | — |
+| [ ] | 1.6 | I | | Install the first Latest release with `install.sh` ✋ | — |
+
+## Wave 2: Scanner + Overview
+
+| ✓ | ID | Owner | Par | Task | Reqs |
+|---|---|---|---|---|---|
+| [ ] | 2.1 | B | a | `BulkWalker` + `WalkPool` + `SizeAccumulator` (or S1's winner) with fixture tests: totals, hard links, symlinks, unreadable dirs, cancellation, device boundary | SCAN-02..07, SCAN-09 |
+| [ ] | 2.2 | B | b | `VolumeInfo`, `Snapshots`, `ReadOnlyCommand` with parser tests on captured output | SYS-01, SYS-02 |
+| [ ] | 2.3 | B | c | CleanerCore models + `PathPolicy` + `ByteFormatter` + catalog well-formedness tests (catalog empty but shaped) | RULE-01 |
+| [ ] | 2.4 | B | | `ScanEngine` + `Matcher` (needs 2.1, 2.3) | SCAN-01, SCAN-08, RULE-03, RULE-04 |
+| [ ] | 2.5 | B | | Overview page: storage bar (Charts), details, recommendations placeholder | SYS-01, SYS-03, UI-02 |
+| [ ] | 2.6 | B | | `tcbench` scenarios; numbers into EVIDENCE | PERF-01..05 |
+| [ ] | 2.7 | I | | Overview totals vs `df` and System Settings ✋ | — |
+
+## Wave 3: Clean engine + Smart Clean
+
+| ✓ | ID | Owner | Par | Task | Reqs |
+|---|---|---|---|---|---|
+| [ ] | 3.1 | B | a | `SafetyGate`, providers protocols, `SkipReason`; `SafetyRulesTests` covering `safety.md` 1–16 and `RESEARCH.md` §3.3 incidents | SAFE-01..12 |
+| [ ] | 3.2 | B | b | Catalog: caches, logs, trash, browsers, apps rules with rule-obligation tests | RULE-01..04 |
+| [ ] | 3.3 | B | | `TrashExecutor`, `DeleteExecutor`, `History`, `Undo`, `Cleaner.run/preview` (needs 3.1) | CLEAN-01..05 |
+| [ ] | 3.4 | B | | App `RunningApps` + `OpenFiles` providers (`proc_listpidspath`) | SAFE-07, SAFE-08 |
+| [ ] | 3.5 | B | | Smart Clean page, clean bar, confirm dialog, result sheet with measured delta | CLEAN-02, CLEAN-06, UI-03, UI-06 |
+| [ ] | 3.6 | B | | Trash + History pages, Put Back, Free Space Now | CLEAN-04, CLEAN-05 |
+| [ ] | 3.7 | O | | Independent safety review by a fresh reviewer agent with no session context | — |
+| [ ] | 3.8 | I | | Real clean + undo on items Ian picks ✋ | — |
+
+## Wave 4: System Data + Developer
+
+| ✓ | ID | Owner | Par | Task | Reqs |
+|---|---|---|---|---|---|
+| [ ] | 4.1 | B | a | Info rules (`system.*`, `logs.system`, `mail.store`, …) + System Data page + Copy Command | SYS-03..05 |
+| [ ] | 4.2 | B | b | Developer rules (Xcode, SwiftPM, npm, Yarn, Bun, pip, uv, Cargo, Gradle, Maven, CocoaPods, Android) | RULE-01 |
+| [ ] | 4.3 | B | c | `OwnerCommand` runner + `dev.simUnavailable`, `dev.simDevices`, `dev.simRuntimes`, `dev.homebrew`, `dev.pnpm`, `dev.go*`, `dev.dockerDangling` (tests use fake executables in fixtures) | CLEAN-07 |
+| [ ] | 4.4 | B | | Mail, iOS, installers rules | RULE-01 |
+| [ ] | 4.5 | B | | Developer page with simulators table and project folders | UI-02 |
+| [ ] | 4.6 | I | | System Data page vs System Settings ✋ | — |
+
+## Wave 5: Large files, Space Lens, Settings, Access
+
+| ✓ | ID | Owner | Par | Task | Reqs |
+|---|---|---|---|---|---|
+| [ ] | 5.1 | B | a | Large & Old Files page (Table, Quick Look) | UI-02, UI-05 |
+| [ ] | 5.2 | B | b | Space Lens sunburst with drill-down (fallback to `Canvas` if Charts is slow) | PERF-07 |
+| [ ] | 5.3 | B | c | Settings window: delete mode, exclusions, rules, update check | RULE-05, DIST-04 |
+| [ ] | 5.4 | B | | `AccessProbe` + Needs Access rows + re-check on activate | PERM-01..04 |
+| [ ] | 5.5 | B | | Update checker (GitHub API, once per day) | DIST-04, DIST-05 |
+
+## Wave 6: App Uninstaller (optional for 1.0, Q3)
+
+| ✓ | ID | Owner | Par | Task |
+|---|---|---|---|---|
+| [ ] | 6.1 | O | | Write the uninstaller spec (search roots, whole-name and bundle-ID matching, Apple-prefix exclusion, shared vendor folders, receipts) |
+| [ ] | 6.2 | B | | Implement with regression tests for Pearcleaner #506, #571, #587, #618 and Lemon's short-bundle-ID bug |
+
+## Wave 7: Polish + 1.0
+
+| ✓ | ID | Owner | Par | Task | Reqs |
+|---|---|---|---|---|---|
+| [ ] | 7.1 | B | a | Onboarding sheet + FDA flow | PERM-02 |
+| [ ] | 7.2 | B | b | Accessibility pass: labels, keyboard, Reduce Transparency, Increase Contrast, Reduce Motion | UI-04, UI-05, UI-07 |
+| [ ] | 7.3 | B | c | App icon (Icon Composer), screenshots in `docs/screenshots/` (webp) | — |
+| [ ] | 7.4 | O | | Final README, release notes, v1.0.0 | — |
+| [ ] | 7.5 | I | | Full hand test on Ian's Mac ✋ | — |

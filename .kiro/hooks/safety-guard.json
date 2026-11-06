@@ -1,0 +1,13 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "safety-guard",
+      "description": "Deny shell commands that could clean or delete real data on this Mac (safety.md rule 17), and deny git commit when .kiro/ is ignored or a secret pattern is staged. Exit 2 denies; the reason is shown to the agent.",
+      "trigger": "PreToolUse",
+      "matcher": "execute_bash",
+      "timeout_ms": 30000,
+      "action": { "type": "command", "command": "bash scripts/hooks/safety-guard.sh" }
+    }
+  ]
+}
