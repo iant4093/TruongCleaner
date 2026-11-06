@@ -38,7 +38,7 @@ Background: `docs/PLAN.md` (decisions, waves, CI/CD), `docs/RESEARCH.md`
 - No third-party dependencies. No new top-level folders, entitlements or targets without the orchestrator.
 - Swift 6 mode, strict concurrency, warnings as errors. No file I/O on the main actor.
 - Builders edit only the files their brief allows and never touch `.kiro/`, `docs/*.md`, `README.md`, `AGENTS.md`, `.github/` or `scripts/hooks/`.
-- Only the orchestrator commits and pushes. Pushes to `main` need Ian's permission (`docs/PLAN.md` Q5).
+- Only the orchestrator commits and pushes. It may push to `main` (Ian, 2026-11-06).
 - Never copy code from other cleaners. Mole, Lemon and Peel are GPL; Pearcleaner has a Commons Clause. Use the facts in `docs/research/`, written in our own code.
 - Every number published (README, release notes) must come from `docs/EVIDENCE.md`.
 

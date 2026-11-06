@@ -49,8 +49,9 @@ every action, and can undo it.
 | D14 | Repo layout, README, `scripts/` and CI/CD follow TruongCam. CI runs on GitHub's `xcode-27` image. Pushes to `main` that pass every gate publish a Latest release. | Ian's format. |
 | D15 | Release assets: `TruongCleaner.dmg`, `TruongCleaner.zip`, `install.sh`, `TruongCleaner.dSYM.zip`, `SHA256SUMS`, with build provenance attestations. | One-command install plus a normal DMG. |
 | D16 | No telemetry. The only network call is a daily check of the GitHub Releases API for a newer build, which the user can turn off. | Privacy; zero dependencies. |
-| D17 | Signing: **ad-hoc** for now (open, Q1). | $0 and no secrets, like TruongCam. Developer ID later changes the path in section 6. |
-| D18 | License: **MIT** (open, Q4). | Same as FrankenTTY. |
+| D17 | Signing: **ad-hoc** for now (Q1). | $0 and no secrets, like TruongCam. Developer ID later changes the path in section 6. |
+| D18 | License: **MIT** (Q4). | Same as FrankenTTY. |
+| D19 | Updates: notify-only checker, no Sparkle (Q2). App Uninstaller after 1.0 (Q3). Orchestrator may push to `main` (Q5). | Ian, 2026-11-06. |
 
 ---
 
@@ -257,12 +258,12 @@ Flow (full protocol in `.kiro/steering/agent-roles.md`):
 
 ---
 
-## 11. Open questions for Ian
+## 11. Questions for Ian (answered 2026-11-06: defaults, push allowed)
 
-| ID | Question | Default if no answer |
+| ID | Question | Answer |
 |---|---|---|
-| Q1 | Will you pay for an Apple Developer ID? | Ad-hoc; no helper; install via `install.sh` |
+| Q1 | Will you pay for an Apple Developer ID? | No, for now. Ad-hoc; no helper; install via `install.sh` |
 | Q2 | Sparkle 2 auto-update (+3 MB, one dependency) or a notify-only checker (zero deps)? | Notify-only |
 | Q3 | Ship the App Uninstaller in 1.0, or after? | After 1.0 (Wave 6 optional) |
 | Q4 | MIT license? | MIT, copyright "Ian Truong" |
-| Q5 | May the orchestrator push straight to `main` in this repo (as in FrankenTTY)? | Ask before the first push |
+| Q5 | May the orchestrator push straight to `main` in this repo? | Yes |
