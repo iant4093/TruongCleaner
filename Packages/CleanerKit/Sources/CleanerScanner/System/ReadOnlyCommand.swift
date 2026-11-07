@@ -1,0 +1,220 @@
+import Foundation
+import Synchronization
+
+/// The outcome of one read-only command.
+public struct CommandResult: Sendable {
+    /// Exit status, or `nil` when the command never started or could not be stopped.
+    public let exitCode: Int32?
+    /// `true` when the command ran past its timeout and was stopped.
+    public let timedOut: Bool
+    /// Why the command was refused or could not be launched. `nil` when it ran.
+    public let launchError: String?
+    /// Everything the command wrote to standard output.
+    public let stdout: Data
+    /// Everything the command wrote to standard error.
+    public let stderr: Data
+    /// Wall-clock time from launch request to the end of the call.
+    public let duration: Duration
+
+    /// `true` only when the command ran, exited 0 and did not time out.
+    public var succeeded: Bool { exitCode == 0 && !timedOut && launchError == nil }
+
+    /// Standard output decoded as UTF-8.
+    public var stdoutString: String { String(decoding: stdout, as: UTF8.self) }
+
+    /// Standard error decoded as UTF-8.
+    public var stderrString: String { String(decoding: stderr, as: UTF8.self) }
+}
+
+/// Runs the few read-only system commands the scanner needs.
+///
+/// Rules (`REQ-CLEAN-07`, read-only part): absolute executable path, fixed argv,
+/// scrubbed environment, no shell, stdin from `/dev/null`, a timeout. A command
+/// that is not on ``allowList`` is refused without being launched.
+public struct ReadOnlyCommand: Sendable {
+    /// Executable path mapped to the only argument lists allowed for it (exact match).
+    public static let allowList: [String: [[String]]] = [
+        "/usr/bin/tmutil": [
+            ["listlocalsnapshots", "/"],
+            ["listlocalsnapshotdates", "/"],
+        ],
+        "/usr/sbin/diskutil": [
+            ["apfs", "list", "-plist"],
+            ["info", "-plist", "/"],
+        ],
+        "/usr/bin/xcrun": [
+            ["simctl", "list", "devices", "--json"],
+            ["simctl", "runtime", "list", "--json"],
+        ],
+    ]
+
+    /// `PATH` given to every command.
+    static let searchPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+    /// Prefix of `launchError` when a command was refused before launch.
+    static let refusedPrefix = "refused: "
+
+    /// Runs an allow-listed command.
+    ///
+    /// - Parameters:
+    ///   - executable: Absolute path of the tool.
+    ///   - arguments: The exact argument list from ``allowList``.
+    ///   - timeout: How long to wait before terminating the command (then killing it after 2 s).
+    /// - Returns: The result. A refused command has `launchError` set and was never launched.
+    @concurrent
+    public static func run(_ executable: String, _ arguments: [String], timeout: Duration) async -> CommandResult {
+        guard executable.hasPrefix("/") else {
+            return refused("executable path must be absolute")
+        }
+        guard let allowedArguments = allowList[executable], allowedArguments.contains(arguments) else {
+            return refused("not on the read-only allow-list")
+        }
+        return await execute(executable, arguments, timeout: timeout)
+    }
+
+    /// Runs any absolute-path command with the same environment, pipe and timeout handling.
+    ///
+    /// Internal so tests can exercise the timeout path. The allow-list lives in ``run(_:_:timeout:)``
+    /// and tests cannot change it.
+    @concurrent
+    static func execute(_ executable: String, _ arguments: [String], timeout: Duration) async -> CommandResult {
+        guard executable.hasPrefix("/") else {
+            return refused("executable path must be absolute")
+        }
+        let environment = scrubbedEnvironment(parent: ProcessInfo.processInfo.environment)
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: runBlocking(
+                    executable, arguments, timeout: timeout, environment: environment
+                ))
+            }
+        }
+    }
+
+    /// The environment every command gets. `DEVELOPER_DIR` is passed only when the parent has it.
+    static func scrubbedEnvironment(parent: [String: String]) -> [String: String] {
+        var environment = [
+            "PATH": searchPath,
+            "HOME": NSHomeDirectory(),
+            "LANG": "en_US.UTF-8",
+        ]
+        if let developerDir = parent["DEVELOPER_DIR"], !developerDir.isEmpty {
+            environment["DEVELOPER_DIR"] = developerDir
+        }
+        return environment
+    }
+
+    private static func refused(_ reason: String) -> CommandResult {
+        CommandResult(
+            exitCode: nil, timedOut: false, launchError: refusedPrefix + reason,
+            stdout: Data(), stderr: Data(), duration: .zero
+        )
+    }
+
+    /// Collects one pipe's output on a background thread.
+    private final class PipeBuffer: Sendable {
+        private let storage = Mutex<Data>(Data())
+        func set(_ data: Data) { storage.withLock { $0 = data } }
+        var data: Data { storage.withLock { $0 } }
+    }
+
+    /// Blocking implementation. Runs on a dispatch thread, never on the cooperative pool or the main actor.
+    private static func runBlocking(
+        _ executable: String,
+        _ arguments: [String],
+        timeout: Duration,
+        environment: [String: String]
+    ) -> CommandResult {
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = environment
+        process.standardInput = FileHandle.nullDevice
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+
+        do {
+            try process.run()
+        } catch {
+            return CommandResult(
+                exitCode: nil, timedOut: false, launchError: error.localizedDescription,
+                stdout: Data(), stderr: Data(), duration: started.duration(to: clock.now)
+            )
+        }
+
+        // Read both pipes at once so a large output cannot fill a pipe and stall the child.
+        let outBuffer = PipeBuffer()
+        let errBuffer = PipeBuffer()
+        let readers = DispatchGroup()
+        for (handle, buffer) in [(outPipe.fileHandleForReading, outBuffer), (errPipe.fileHandleForReading, errBuffer)] {
+            readers.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                buffer.set((try? handle.readToEnd()) ?? Data())
+                readers.leave()
+            }
+        }
+
+        var timedOut = false
+        if exited.wait(timeout: .now() + dispatchInterval(timeout)) == .timedOut {
+            timedOut = true
+            process.terminate()
+            if exited.wait(timeout: .now() + .seconds(2)) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
+                _ = exited.wait(timeout: .now() + .seconds(2))
+            }
+        }
+        _ = readers.wait(timeout: .now() + .seconds(5))
+
+        return CommandResult(
+            exitCode: process.isRunning ? nil : process.terminationStatus,
+            timedOut: timedOut,
+            launchError: nil,
+            stdout: outBuffer.data,
+            stderr: errBuffer.data,
+            duration: started.duration(to: clock.now)
+        )
+    }
+
+    private static func dispatchInterval(_ duration: Duration) -> DispatchTimeInterval {
+        let parts = duration.components
+        let nanoseconds = Double(parts.seconds) * 1e9 + Double(parts.attoseconds) / 1e9
+        guard nanoseconds > 0 else { return .nanoseconds(0) }
+        return .nanoseconds(Int(min(nanoseconds, Double(Int.max / 2))))
+    }
+}
+
+extension CommandResult {
+    /// The `ProbeError` for a command that did not succeed, or `nil` when it did.
+    ///
+    /// - Parameter tool: Name shown in `toolMissing` errors (for example `"xcrun"`).
+    func probeError(tool: String) -> ProbeError? {
+        if let launchError {
+            return launchError.hasPrefix(ReadOnlyCommand.refusedPrefix)
+                ? .notRun(String(launchError.dropFirst(ReadOnlyCommand.refusedPrefix.count)))
+                : .toolMissing(tool)
+        }
+        if timedOut { return .timedOut }
+        guard let exitCode else { return .commandFailed(exitCode: -1, detail: "command did not stop") }
+        if exitCode == 0 { return nil }
+
+        let message = stderrString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = message.lowercased()
+        let missingMarkers = [
+            "invalid active developer path",
+            "unable to find utility",
+            "no developer tools were found",
+            "active developer directory",
+            "xcode-select: error",
+        ]
+        if missingMarkers.contains(where: lowered.contains) { return .toolMissing(tool) }
+        return .commandFailed(exitCode: exitCode, detail: String(message.suffix(200)))
+    }
+}

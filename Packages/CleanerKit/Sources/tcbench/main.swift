@@ -4,7 +4,10 @@
 let usage = """
 usage: tcbench <scenario> [options]
 
-Dev-only benchmark tool for CleanerKit. No scenarios are available yet.
+Dev-only benchmark tool for CleanerKit.
+
+Scenarios:
+  volume    Print volume capacity, snapshots, swap and simulator counts (read-only).
 """
 
-print(usage)
+if CommandLine.arguments.dropFirst().first == "volume" { await VolumeCommand.run() } else { print(usage) }
