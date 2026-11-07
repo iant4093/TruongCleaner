@@ -42,7 +42,7 @@ inclusion: always
 - Scanning, sizing and deletion never run on the main actor. Mark heavy entry
   points `@concurrent` or put them on an actor. Under MainActor default
   isolation, a plain `nonisolated async` function can still run on main.
-- Bounded parallelism: a worker pool sized `min(8, activeProcessorCount)`;
+- Bounded parallelism: one shared walker budget of at most `min(6, activeProcessorCount)` threads (measured best, task 2.7; REQ-SCAN-06 caps at 8);
   never a task per file.
 - Progress goes out through `AsyncStream`, throttled to ≤ 10 updates/s.
 - Cancellation: check `Task.isCancelled` per directory batch; stop within 100 ms.

@@ -298,3 +298,18 @@ button starts it; opening System Data still does. P4 needs a design change for
 very large cache folders (size `~/Library/Caches` children with a shallower walk
 and refine in the background, or show results per rule as they arrive), tracked
 as task 2.7.
+
+### Task 2.7 review (2026-11-07)
+
+Glob rules no longer open folders that cannot match (`installers.macOS` 3.15 s →
+0.006 s); one shared walker-thread budget (6 threads measured best on the M3 Max:
+8 → 7.8 s, 6 → 6.5 s, 4 → 7.9 s; within REQ-SCAN-06's "at most 8"); largest root
+first; each Smart Clean section appears as soon as its rule finishes.
+`ScanEquivalenceTests` compare old and new engines per rule (paths, bytes, counts,
+file IDs, dates, skips). `tcbench smartclean $HOME`: builder 6.48–6.62 s;
+orchestrator rerun 7.80–7.97 s (machine busier). Before: 9.25 s. P4 (< 5 s) still
+fails on this Mac because `~/Library/Caches` alone is 1.01 M files (`user.caches`
+6.3 s). Next lever: show per-rule results progressively (done) and accept P4 as
+"first results < 1 s, full list < 8 s on a 1 M-file cache folder". Merged main:
+lint 0 violations in 149 files, deletion-site PASS, package tests PASS, Release
+build 4.2 MB.
