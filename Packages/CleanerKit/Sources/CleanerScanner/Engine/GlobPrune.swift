@@ -46,7 +46,7 @@ struct GlobPrune: Sendable, Equatable {
 
     /// Expands `{a,b}` groups the way `GlobPattern` does: the first `{` to the first `}` after it, only
     /// when the body has a comma. Anything else stays as written.
-    private static func alternatives(of text: String) -> [String] {
+    static func alternatives(of text: String) -> [String] {
         var results: [String] = []
         var pending = [text]
         while let current = pending.popLast() {

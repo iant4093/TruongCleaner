@@ -16,7 +16,12 @@ struct RootOutcome: Sendable {
 struct ScanContext: Sendable {
     let policy: PathPolicy
     let environment: Environment
+    /// Most threads one walk may use. With a `budget` the walk starts with one and grows.
     let workers: Int
+    /// Thread budget shared by all walks of the scan, or nil for a fixed number of threads per walk.
+    let budget: WorkerBudget?
+    /// Whether `.glob` rules leave folders unopened that cannot hold a match (`DescentFilter`).
+    let globDescent: Bool
     let progress: ProgressAggregator
 }
 
@@ -81,13 +86,18 @@ enum RootScanner {
         }
 
         let prune = GlobPrune(rule: rule)
-        let options = WalkOptions(
+        var options = WalkOptions(
             maxWorkers: context.workers,
             totalsDepth: shape.totalsDepth,
             topFilesCount: 0,
             pruneNames: prune.names,
             pruneKeepNames: prune.keepNames
         )
+        options.budget = context.budget
+        // The matcher reads the names beside an item for these guards, so every folder must be listed.
+        if context.globDescent, !rule.guards.needsFolderListings {
+            options.descent = DescentFilter(rule: rule)
+        }
         let progress = context.progress
         let result: WalkResult
         do {

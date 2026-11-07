@@ -48,12 +48,18 @@ public enum BulkWalker {
 private final class WalkRun: Sendable {
     let root: URL
     let context: WalkContext
+    /// Threads to start with.
     let workers: Int
+    /// Most threads the walk may have at once.
+    let maxWorkers: Int
+    let budget: WorkerBudget?
 
-    private init(root: URL, context: WalkContext, workers: Int) {
+    private init(root: URL, context: WalkContext, workers: Int, maxWorkers: Int, budget: WorkerBudget?) {
         self.root = root
         self.context = context
         self.workers = workers
+        self.maxWorkers = maxWorkers
+        self.budget = budget
     }
 
     /// Checks and opens the root, then builds the shared state. Throws before anything is started.
@@ -79,7 +85,10 @@ private final class WalkRun: Sendable {
             throw openError(for: root, code: code)
         }
 
-        let workers = max(1, min(options.maxWorkers, min(8, ProcessInfo.processInfo.activeProcessorCount)))
+        let maxWorkers = max(1, min(options.maxWorkers, min(8, ProcessInfo.processInfo.activeProcessorCount)))
+        // With a shared budget the walk starts with the one thread the caller holds for it and grows.
+        let budget = options.budget
+        let workers = budget == nil ? maxWorkers : 1
         let nodes = SizeAccumulator()
         var rootTotals = Totals()
         rootTotals.note(
@@ -92,24 +101,35 @@ private final class WalkRun: Sendable {
             initial: rootTotals)
 
         let queue = JobQueue()
-        queue.push(WalkJob(fd: fd, path: path, depth: 0, keptNode: rootIndex))
+        queue.push(
+            WalkJob(
+                fd: fd, path: path, depth: 0, keptNode: rootIndex,
+                descent: options.descent?.rootCursor ?? .everything))
         let context = WalkContext(
             queue: queue, links: HardLinkSet(), nodes: nodes, denied: DeniedList(), stop: stop,
             progress: ProgressReporter(interval: options.progressInterval, callback: progress),
             rootFSID: rootFSID, totalsDepth: max(0, options.totalsDepth),
-            topFilesCapacity: max(0, options.topFilesCount), handoffLimit: workers > 1 ? workers : 0,
-            prune: PrunePlan(options))
-        return WalkRun(root: root, context: context, workers: workers)
+            topFilesCapacity: max(0, options.topFilesCount),
+            handoffLimit: maxWorkers > 1 ? maxWorkers : 0,
+            prune: PrunePlan(options), descent: options.descent,
+            extras: budget == nil || maxWorkers == 1 ? nil : ExtraWorkers())
+        return WalkRun(root: root, context: context, workers: workers, maxWorkers: maxWorkers, budget: budget)
     }
 
     /// Runs the workers and waits without blocking a cooperative thread.
     func execute() async -> WalkResult {
         let context = self.context
         return await withCheckedContinuation { continuation in
-            WalkPool.run(
-                workers: workers,
+            let group = WalkGroup(
+                budget: budget, maxThreads: maxWorkers,
                 body: { DirectoryWalker.work(context: context) },
-                onFinished: { outputs in continuation.resume(returning: self.assemble(outputs)) })
+                onFinished: { outputs in
+                    // The walk is over: drop the link from the context back to the thread group.
+                    context.extras?.install(nil)
+                    continuation.resume(returning: self.assemble(outputs))
+                })
+            context.extras?.install(group)
+            group.start(workers: workers)
         }
     }
 

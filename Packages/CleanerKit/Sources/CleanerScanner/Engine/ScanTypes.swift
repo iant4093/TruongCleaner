@@ -9,10 +9,12 @@ public struct ScanRequest: Sendable {
     public var environment: Environment
     /// Folders the user excluded in Settings. Nothing inside or above them is offered.
     public var userExclusions: [URL]
-    /// Roots walked at the same time. Clamped so that `maxConcurrentRoots * workersPerRoot` is at most
-    /// `min(8, activeProcessorCount)`.
+    /// Roots walked at the same time. Clamped to the thread budget (`min(6, activeProcessorCount)`).
     public var maxConcurrentRoots: Int
-    /// Walker threads per root.
+    /// Most walker threads one root may use. Clamped to the thread budget.
+    ///
+    /// All walks together never use more than `min(6, activeProcessorCount)` threads. Each walk in
+    /// progress holds one; a root with many folders takes the threads that the others leave free.
     public var workersPerRoot: Int
 
     /// Creates a request.
@@ -20,8 +22,8 @@ public struct ScanRequest: Sendable {
         rules: [Rule],
         environment: Environment,
         userExclusions: [URL] = [],
-        maxConcurrentRoots: Int = 2,
-        workersPerRoot: Int = 4
+        maxConcurrentRoots: Int = 3,
+        workersPerRoot: Int = 8
     ) {
         self.rules = rules
         self.environment = environment
@@ -89,7 +91,9 @@ public enum ScanEvent: Sendable {
     case ruleStarted(String)
     /// Files and allocated bytes counted so far across all walks. At most 10 per second.
     case progress(files: Int, allocatedBytes: Int64)
-    /// A rule is done. Results arrive in request order.
+    /// A rule is done. The result is delivered as soon as no earlier rule that is still running could
+    /// offer one of its paths, so a slow early rule does not hold back the rest. Rules that could offer
+    /// the same path arrive in request order. `ScanReport.results` is always in request order.
     case ruleFinished(RuleResult)
     /// The scan is over. Always the last event.
     case finished(ScanReport)

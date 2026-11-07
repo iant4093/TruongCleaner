@@ -152,6 +152,18 @@ final class SmartCleanModel {
         }
     }
 
+    /// Number of rules that have finished in the scan on screen.
+    var finishedRuleCount: Int {
+        _ = revision
+        return finishedRuleIDs.count
+    }
+
+    /// Number of rules the scan on screen covers.
+    var totalRuleCount: Int {
+        _ = revision
+        return scanRules.count
+    }
+
     /// Progress per category while a scan runs.
     var categoryProgress: [CategoryProgress] {
         _ = revision
