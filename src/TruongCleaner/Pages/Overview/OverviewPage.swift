@@ -132,6 +132,16 @@ struct OverviewPage: View {
                     .accessibilityHint("Stops measuring and keeps the previous sizes")
             }
             .font(.callout)
+        } else if categories.totals == nil {
+            HStack(spacing: 8) {
+                Text("Data is one block until your files are measured.")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Button("Break Down Data") { categories.start(force: false) }
+                    .controlSize(.small)
+                    .accessibilityHint("Measures apps, documents, caches and developer files. Takes about 20 seconds.")
+            }
+            .font(.callout)
         } else if let totals = categories.totals, totals.totalNeedsAccess > 0 {
             Label(
                 "Some folders need Full Disk Access, so their sizes are missing from the bar.",
