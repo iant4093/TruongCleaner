@@ -18,6 +18,14 @@ final class AppModel {
     /// Data for the Smart Clean page.
     let smartClean: SmartCleanModel
 
+    /// Data for the Trash page.
+    let trash: TrashModel
+    /// Data for the History page.
+    let cleanHistory: HistoryModel
+
+    /// Objects shared by pages that clean or read history, such as the one `HistoryStore`.
+    let services: Services
+
     /// Delete mode, exclusions, disabled rules and the update switch.
     let settings: SettingsStore
     /// The once-a-day check for a newer build.
@@ -32,7 +40,11 @@ final class AppModel {
         let settings = SettingsStore()
         self.settings = settings
         self.updates = UpdateChecker(settings: settings)
+        let services = Services()
+        self.services = services
         self.smartClean = SmartCleanModel(settings: settings)
+        self.trash = TrashModel(services: services, settings: settings)
+        self.cleanHistory = HistoryModel(services: services)
     }
 
     /// What the toolbar's Scan button (⌘R) does on the current page.
