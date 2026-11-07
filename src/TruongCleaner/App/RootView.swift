@@ -89,6 +89,8 @@ private struct DetailView: View {
             OverviewPage(model: model.overview)
         case .largeFiles:
             LargeFilesPage(model: model.largeFiles)
+        case .spaceLens:
+            SpaceLensPage(model: model.spaceLens)
         default:
             placeholder
         }

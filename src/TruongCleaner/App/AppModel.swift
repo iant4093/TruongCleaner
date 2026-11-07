@@ -11,4 +11,6 @@ final class AppModel {
 
     /// Data for the Large & Old Files page.
     let largeFiles = LargeFilesModel()
+    /// Data for the Space Lens page.
+    let spaceLens = SpaceLensModel()
 }
