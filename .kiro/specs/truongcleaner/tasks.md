@@ -68,7 +68,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 4.3 | B | c | `OwnerCommand` runner + `dev.simUnavailable`, `dev.simDevices`, `dev.simRuntimes`, `dev.homebrew`, `dev.pnpm`, `dev.go*`, `dev.dockerDangling` (tests use fake executables in fixtures) | CLEAN-07 |
 | [x] | 4.4 | B | | Mail, iOS, installers rules | RULE-01 |
 | [x] | 4.5 | B | | Developer page with simulators table and project folders | UI-02 |
-| [ ] | 4.6 | B | | Overview and System Data: add measured home categories (Applications, Documents, Downloads, Library caches, Developer, iOS backups) so "Unexplained" shrinks to the real remainder | SYS-03 |
+| [x] | 4.6 | B | | Overview and System Data: add measured home categories (Applications, Documents, Downloads, Library caches, Developer, iOS backups) so "Unexplained" shrinks to the real remainder | SYS-03 |
 | [ ] | 4.7 | I | | System Data page vs System Settings ✋ | — |
 
 ## Wave 5: Large files, Space Lens, Settings, Access

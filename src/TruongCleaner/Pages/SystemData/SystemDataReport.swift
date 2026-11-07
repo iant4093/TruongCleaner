@@ -12,6 +12,11 @@ nonisolated struct SystemDataReport {
     let measuredBytes: Int64
     /// Used space that no measurement explains. Never negative. `nil` when ``dataVolumeUsed`` is unknown.
     let unexplainedBytes: Int64?
+    /// What the category measurement found (apps, documents, caches, developer data, and so on), or `nil`
+    /// when it has not finished. Included in ``measuredBytes``.
+    let categoryBytes: Int64?
+    /// True while the category measurement runs and has no result yet.
+    let isMeasuringCategories: Bool
 
     /// Rows of one section, in page order.
     func rows(in section: SystemDataSection) -> [SystemDataRow] {
@@ -25,6 +30,12 @@ nonisolated struct SystemDataReport {
         }
         let accounted = ByteFormatter.string(min(measuredBytes, used))
         let total = ByteFormatter.string(used)
+        if categoryBytes != nil {
+            return "\(total) used. Measured: \(accounted). Not measured by any app: \(ByteFormatter.string(unexplained))."
+        }
+        if isMeasuringCategories {
+            return "\(total) used. Measuring your files…"
+        }
         if unexplained == 0 {
             return "\(accounted) of \(total) used. Our measurements cover all used space."
         }
@@ -42,6 +53,11 @@ nonisolated struct SystemDataInputs {
     var snapshots: Result<[LocalSnapshot], ProbeError>
     var swap: SwapUsage?
     var runtimes: Result<[SimulatorRuntime], ProbeError>
+    /// The category measurement, or `nil` when it has not finished.
+    var categories: CategoryTotals?
+    /// True while the category measurement runs. Unexplained then reads "Measuring…" instead of a number
+    /// that would be too high.
+    var isMeasuringCategories = false
 }
 
 /// Turns scan results and probe answers into the rows of the System Data page. Pure: no I/O.
@@ -57,6 +73,11 @@ nonisolated enum SystemDataBuilder {
     /// Unexplained is the Data volume's used space minus every measured size that sits on that volume,
     /// clamped at zero. Swap is not subtracted, because swap files live on the separate VM volume. Snapshots
     /// have no size.
+    ///
+    /// Once the categories are measured, they cover the whole home folder. A row whose folder is inside the
+    /// home folder (such as `~/Library/Mail`) is then already in the category sum and is not subtracted
+    /// again. Rows outside it (such as `/Library/Caches`) and purgeable space still are. The category sum
+    /// uses exclusive bytes, so cloned data that two copies share stays in Unexplained.
     static func build(_ inputs: SystemDataInputs) -> SystemDataReport {
         var rows: [SystemDataRow] = []
         for rule in inputs.rules where rule.tier == .info {
@@ -71,7 +92,13 @@ nonisolated enum SystemDataBuilder {
             .sorted { ($0.element.section.rawValue, $0.offset) < ($1.element.section.rawValue, $1.offset) }
             .map(\.element)
 
-        let measured = rows.filter(\.countsTowardUsed).reduce(Int64(0)) { $0 + ($1.value.countedBytes ?? 0) }
+        let categoryBytes = inputs.categories.map(CategoryBreakdown.measuredBytes)
+        if categoryBytes != nil {
+            for index in rows.indices where rows[index].isInsideHome { rows[index].countsTowardUsed = false }
+        }
+        let measured = rows.filter(\.countsTowardUsed).reduce(categoryBytes ?? 0) {
+            $0 + ($1.value.countedBytes ?? 0)
+        }
         let used = inputs.volume.dataVolumeUsed
         let unexplained = used.map { max(0, $0 - measured) }
 
@@ -81,18 +108,32 @@ nonisolated enum SystemDataBuilder {
             case nil:
                 row.value = .unknown
                 row.note = "macOS did not report how much space the Data volume uses."
+            case _ where categoryBytes == nil && inputs.isMeasuringCategories:
+                row.value = .text("Measuring…")
+                row.note = "TruongCleaner is measuring your files. This number updates when it finishes."
             case 0?:
                 row.value = .size(0)
                 row.note = "Our measurements cover all used space. " + imprecisionNote
             case let bytes?:
                 row.value = .size(bytes)
-                row.note = imprecisionNote
+                row.note = categoryBytes == nil
+                    ? "Your own files were not measured, so this number is too high. " + imprecisionNote
+                    : imprecisionNote + unreadableNote(inputs.categories)
             }
             rows[index] = row
         }
         return SystemDataReport(
-            rows: rows, dataVolumeUsed: used, measuredBytes: measured, unexplainedBytes: unexplained
+            rows: rows, dataVolumeUsed: used, measuredBytes: measured, unexplainedBytes: unexplained,
+            categoryBytes: categoryBytes,
+            isMeasuringCategories: categoryBytes == nil && inputs.isMeasuringCategories
         )
+    }
+
+    /// A sentence about folders that macOS kept closed, which are not in the measured sum.
+    private static func unreadableNote(_ categories: CategoryTotals?) -> String {
+        guard let count = categories?.totalNeedsAccess, count > 0 else { return "" }
+        let folders = count == 1 ? "1 folder" : "\(count) folders"
+        return " \(folders) in your home could not be read without Full Disk Access; their size is in this number."
     }
 
     // MARK: Rows
@@ -109,7 +150,8 @@ nonisolated enum SystemDataBuilder {
             value: value,
             settingsURL: rule.settingsURL,
             command: rule.sanctionedCommand,
-            countsTowardUsed: counts
+            countsTowardUsed: counts,
+            isInsideHome: !rule.roots.isEmpty && rule.roots.allSatisfy { $0.base == .home }
         )
     }
 

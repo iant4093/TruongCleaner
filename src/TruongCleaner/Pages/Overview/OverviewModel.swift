@@ -15,7 +15,6 @@ struct OverviewData {
     let volumeName: String
     let snapshots: SnapshotSummary
     let swap: SwapUsage?
-    let segments: [StorageSegment]
 
     /// "X of Y used · Z available". Used = capacity minus plain available space.
     var subtitle: String {
@@ -63,6 +62,13 @@ final class OverviewModel {
 
     private(set) var state: State = .loading
 
+    /// The category measurement that splits the Data part of the bar. Shared with the System Data page.
+    let categories: CategoryModel
+
+    init(categories: CategoryModel) {
+        self.categories = categories
+    }
+
     @ObservationIgnored private var lastLoad: ContinuousClock.Instant?
     @ObservationIgnored private var isRefreshing = false
 
@@ -100,9 +106,11 @@ final class OverviewModel {
             volume: volumeResult,
             volumeName: Self.volumeName(for: volumeResult),
             snapshots: summary,
-            swap: swapResult,
-            segments: Self.segments(for: volumeResult)
+            swap: swapResult
         ))
+        // The volume numbers are on screen; now split Data into categories. Skipped while a result under
+        // ten minutes old exists.
+        categories.startIfNeeded()
     }
 
     @concurrent
@@ -120,16 +128,32 @@ final class OverviewModel {
         volume.volumes.first { $0.roles.contains("System") }?.name ?? fallbackVolumeName
     }
 
+    /// Bytes the Data volume uses, or `nil` when per-volume numbers are not available.
+    static func dataVolumeBytes(for volume: VolumeInfo) -> Int64? {
+        guard !volume.volumes.isEmpty else { return nil }
+        return volume.volumes
+            .filter { $0.roles.contains("Data") }
+            .reduce(Int64(0)) { $0 + $1.bytesUsed }
+    }
+
+    /// What is left of the Data volume after purgeable space and every measured category, or `nil` while
+    /// the categories are not measured yet.
+    static func systemDataBytes(for volume: VolumeInfo, categories: CategoryTotals?) -> Int64? {
+        guard let categories, let data = dataVolumeBytes(for: volume) else { return nil }
+        return CategoryBreakdown.systemData(dataUsed: data, purgeable: volume.purgeable, totals: categories)
+    }
+
     /// Bar parts that add up to the disk capacity: macOS volumes, Data, other volumes, purgeable, free.
     ///
-    /// Purgeable space lives inside the Data volume, so it is taken out of Data. Without
-    /// per-volume numbers the bar shows a single "Used" part instead.
-    static func segments(for volume: VolumeInfo) -> [StorageSegment] {
+    /// Purgeable space lives inside the Data volume, so it is taken out of Data. Once the categories are
+    /// measured, Data is split into them plus "System Data", the remainder. Without per-volume numbers the
+    /// bar shows a single "Used" part instead.
+    static func segments(for volume: VolumeInfo, categories: CategoryTotals? = nil) -> [StorageSegment] {
         let purgeable = volume.purgeable
         let free = StorageSegment(label: "Free", bytes: volume.available, color: .secondary.opacity(0.25))
         let purgeableSegment = StorageSegment(label: "Purgeable", bytes: purgeable, color: .orange)
 
-        guard !volume.volumes.isEmpty else {
+        guard let data = dataVolumeBytes(for: volume) else {
             let used = StorageSegment(label: "Used", bytes: max(0, volume.containerUsed - purgeable), color: .blue)
             return [used, purgeableSegment, free]
         }
@@ -137,17 +161,21 @@ final class OverviewModel {
         let macOS = volume.volumes
             .filter { !systemRoles.isDisjoint(with: $0.roles) }
             .reduce(Int64(0)) { $0 + $1.bytesUsed }
-        let data = volume.volumes
-            .filter { $0.roles.contains("Data") }
-            .reduce(Int64(0)) { $0 + $1.bytesUsed }
         let other = max(0, volume.containerUsed - macOS - data)
 
-        return [
-            StorageSegment(label: "Used by macOS volumes", bytes: macOS, color: .gray),
-            StorageSegment(label: "Data", bytes: max(0, data - purgeable), color: .blue),
-            StorageSegment(label: "Other volumes", bytes: other, color: .teal),
-            purgeableSegment,
-            free,
-        ]
+        var dataSegments = [StorageSegment(label: "Data", bytes: max(0, data - purgeable), color: .blue)]
+        if let categories {
+            dataSegments = CategoryBreakdown.segments(categories)
+            dataSegments.append(
+                StorageSegment(
+                    label: CategoryBreakdown.systemDataLabel,
+                    bytes: CategoryBreakdown.systemData(dataUsed: data, purgeable: purgeable, totals: categories),
+                    color: .gray.opacity(0.6)
+                ))
+        }
+
+        return [StorageSegment(label: "Used by macOS volumes", bytes: macOS, color: .gray)]
+            + dataSegments
+            + [StorageSegment(label: "Other volumes", bytes: other, color: .teal), purgeableSegment, free]
     }
 }
