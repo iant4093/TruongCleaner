@@ -137,3 +137,40 @@ zero warnings.
 | 2.1 BulkWalker | 25 walker tests; `tcbench walk ~/Library/Developer --workers 8`: 88,306 files in 1.53 s, 33.66 GB allocated, 31.07 GB private, 13.3 MB peak | Totals equal across 1/4/8 workers and `du -skx`. Clone fixture: one 4 MB file + 2 clones = 12,582,912 B allocated and **0 B private** (every block shared), so private size is a lower bound and allocated an upper bound for what a deletion frees; the UI must show "up to". |
 | 2.2 Volume/Snapshots/Simulators | 51 tests incl. live smoke | `tcbench volume`: 994.66 GB total, 61.72 GB available, 59.17 GB purgeable, 904.32 GB Data used, 0 snapshots, 11 simulator devices, 1 runtime (iOS 27.0, 8.07 GB). Unparseable `tmutil` output → "Unknown", never 0. |
 | 2.3 PathPolicy/Matcher | 66 tests; 90 protected-list rows encoded from RULE_CATALOG §3 | Protection is case-insensitive and component-wise; `isInside` is case-sensitive (stricter). Unknown age → keep. |
+
+### S3: Trash behavior (task 0.3, 2026-11-06)
+
+Builder report `build/dispatch/0.3.log`; summary `spikes/s3-trash/out/summary.md`.
+All moves ran on an attached 300 MB APFS image under `/Volumes`; nothing touched `~/.Trash`.
+
+| | `FileManager.trashItem` | `NSWorkspace.recycle` |
+|---|---|---|
+| File / folder / symlink (link moves, target stays) | yes | yes |
+| `fileID` unchanged after move | yes | yes |
+| Put Back records (`ptbN`/`ptbL` in the Trash's `.DS_Store`) | yes | yes |
+| 10,000 files one by one | 3.46 s, 0.29 ms mean | n/a |
+| Called with the main thread blocked | works | completion never ran |
+| AppKit needed | no | yes |
+
+Decision: `FileManagerExecutor` uses `trashItem` (D9). Collisions are renamed
+with a time stamp, so history stores the resulting URL. Immutable items and items
+in a read-only parent fail with Cocoa 513, so the gate must check flags and parent
+permissions itself. Volumes mounted outside `/Volumes` may have no `.Trashes` and
+fail with 513: report as failed, never fall back to permanent delete.
+
+### Tasks 3.1 and 2.5 review (2026-11-06)
+
+3.1 SafetyGate: 58 tests; `safety.md` rules 2–10, 13, 15, 16 each have a test; the
+builder disabled each of the 17 gate checks in turn and every one made a test
+fail. `proc_listpidspath` was unreliable (exact-vnode only, ~1 in 8 false
+"nothing open"), so `ProcessOpenFilesProvider` scans every process's fds with
+`proc_pidinfo`/`proc_pidfdinfo` (~120 ms per call, ~1,200 processes); 3.3 must
+snapshot once per clean. Open item: the bundle-extension check denies cache
+folders named like `com.example.App`; fixed in 3.2b by checking for a real bundle.
+
+2.5 Overview: builds, launches; bar segments sum to capacity (macOS volumes,
+Data, purgeable, free, other volumes 206.7 MB).
+
+Merged main: lint 0 violations (45 files), deletion-site check PASS, package
+tests PASS (CleanerScanner 73+29, CleanerCore 93, CleanerActions 58), Debug app
+builds (2.4 MB Debug).

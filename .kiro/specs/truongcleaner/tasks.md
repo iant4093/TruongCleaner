@@ -13,7 +13,7 @@ brief in `docs/briefs/<id>.md`.
 |---|---|---|---|---|---|
 | [x] | 0.1 | O | | Confirm builder dispatch: no-op brief, check hooks fire (S8) | `docs/EVIDENCE.md` S8 |
 | [x] | 0.2 | B | a | S1 walker benchmark: `spikes/s1-walker/` SwiftPM exe; `getattrlistbulk` vs `FileManager.enumerator` (prefetched keys) vs `fts`, 1 and N workers, on `~/Library` and `/System/Volumes/Data` (read-only); compare with `du -sk` | Table: files/s, wall time, peak RSS, total bytes vs `du` |
-| [~] | 0.3 | B | b | S3 Trash behavior: `spikes/s3-trash/` on a fixture folder in `spikes/s3-trash/out/`; `trashItem` vs `NSWorkspace.recycle`; collisions; 10k items timing; record resulting URLs | Recommendation + numbers |
+| [x] | 0.3 | B | b | S3 Trash behavior: `spikes/s3-trash/` on a fixture folder in `spikes/s3-trash/out/`; `trashItem` vs `NSWorkspace.recycle`; collisions; 10k items timing; record resulting URLs | Recommendation + numbers |
 | [x] | 0.4 | B | c | S4 volume numbers: `spikes/s4-volume/` prints every capacity key, `statfs`, `ATTR_VOL_SPACEUSED`, `tmutil listlocalsnapshots /`, `diskutil apfs list -plist` summary | Numbers; I compares with System Settings ✋ |
 | [x] | 0.5 | B | d | S5 UI prototype: `spikes/s5-ui/` SwiftUI app with sidebar, icon tiles, grouped form, glass toolbar and clean bar; screenshots light/dark | Screenshots beside System Settings; I approves ✋ |
 | [x] | 0.6 | B | e | S2 FDA probe app: `spikes/s2-fda/` reports each probe result and opens the deep link | I grants/revokes FDA, reports ✋ |
@@ -40,7 +40,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 2.2 | B | b | `VolumeInfo`, `Snapshots`, `ReadOnlyCommand` with parser tests on captured output | SYS-01, SYS-02 |
 | [x] | 2.3 | B | c | CleanerCore models + `PathPolicy` + `ByteFormatter` + catalog well-formedness tests (catalog empty but shaped) | RULE-01 |
 | [x] | 2.4 | B | | `ScanEngine` + `Matcher` (needs 2.1, 2.3) | SCAN-01, SCAN-08, RULE-03, RULE-04 |
-| [~] | 2.5 | B | | Overview page: storage bar (Charts), details, recommendations placeholder | SYS-01, SYS-03, UI-02 |
+| [x] | 2.5 | B | | Overview page: storage bar (Charts), details, recommendations placeholder | SYS-01, SYS-03, UI-02 |
 | [ ] | 2.6 | B | | `tcbench` scenarios; numbers into EVIDENCE | PERF-01..05 |
 | [ ] | 2.7 | I | | Overview totals vs `df` and System Settings ✋ | — |
 
@@ -48,7 +48,7 @@ brief in `docs/briefs/<id>.md`.
 
 | ✓ | ID | Owner | Par | Task | Reqs |
 |---|---|---|---|---|---|
-| [~] | 3.1 | B | a | `SafetyGate`, providers protocols, `SkipReason`; `SafetyRulesTests` covering `safety.md` 1–16 and `RESEARCH.md` §3.3 incidents | SAFE-01..12 |
+| [x] | 3.1 | B | a | `SafetyGate`, providers protocols, `SkipReason`; `SafetyRulesTests` covering `safety.md` 1–16 and `RESEARCH.md` §3.3 incidents | SAFE-01..12 |
 | [x] | 3.2 | B | b | Catalog: caches, logs, trash, browsers, apps rules with rule-obligation tests | RULE-01..04 |
 | [ ] | 3.3 | B | | `TrashExecutor`, `DeleteExecutor`, `History`, `Undo`, `Cleaner.run/preview` (needs 3.1) | CLEAN-01..05 |
 | [ ] | 3.4 | B | | App `RunningApps` + `OpenFiles` providers (`proc_listpidspath`) | SAFE-07, SAFE-08 |
