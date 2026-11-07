@@ -109,6 +109,10 @@ private struct RunPlan {
     private let request: ScanRequest
     private let clock: ContinuousClock
     private let emit: @Sendable (ScanEvent) -> Void
+    /// Resolved roots of every rule, known before any rule is matched.
+    private let ruleRoots: [RuleRoots]
+    /// Which items hold another rule's root.
+    private let overlap: RootOverlap
     private var states: [RuleState]
     private var queue: [Unit] = []
     private var queueHead = 0
@@ -124,6 +128,9 @@ private struct RunPlan {
         self.clock = clock
         self.emit = emit
         self.states = Array(repeating: RuleState(), count: request.rules.count)
+        let roots = request.rules.map { RuleRoots.resolve($0, in: request.environment) }
+        self.ruleRoots = roots
+        self.overlap = RootOverlap(rules: request.rules, roots: roots)
     }
 
     /// The next root to walk, expanding the next rule's roots when the queue is empty.
@@ -145,7 +152,14 @@ private struct RunPlan {
     /// Merges a finished root into its rule.
     mutating func absorb(_ outcome: RootOutcome, forRule index: Int) {
         var state = states[index]
-        state.findings.append(contentsOf: outcome.findings)
+        for finding in outcome.findings {
+            // An item that holds another rule's root is that rule's to offer, not ours.
+            if overlap.isCovered(finding.url, byRuleOtherThan: index) {
+                state.skipped[.coveredByOtherRule, default: 0] += 1
+            } else {
+                state.findings.append(finding)
+            }
+        }
         for (reason, count) in outcome.skipped { state.skipped[reason, default: 0] += count }
         state.measuredBytes += outcome.measuredBytes
         state.measuredPrivateBytes += outcome.measuredPrivateBytes
@@ -185,47 +199,17 @@ private struct RunPlan {
         state.started = clock.now
         emit(.ruleStarted(rule.id))
 
-        // Rules that are not walked (owner commands, computed rows) have no roots to resolve.
-        switch rule.match {
-        case .ownerCommand, .computed:
-            state.finished = clock.now
-            states[index] = state
-            return
-        default:
-            break
-        }
-        for spec in rule.roots {
-            // One starting folder, or one per project folder the user chose.
-            let starts = RootExpansion.starts(of: spec, in: request.environment)
-            if starts.isEmpty && spec.base != .userChosen {
-                // Unknown base (no Darwin directory): nothing is scanned.
-                state.partial = true
-                continue
-            }
-            for trusted in starts {
-                guard let expanded = RootExpansion.expand(spec, from: trusted) else {
-                    // An unsafe component: nothing is scanned.
-                    state.partial = true
-                    continue
-                }
-                let resolved = RootResolver.resolve(
-                    expanded, trusted: trusted, excluding: rule.guards.excludeRootSegments)
-                Self.append(resolved.excluded, to: &state.excluded)
-                Self.append(resolved.needsAccess, to: &state.needsAccess)
-                Self.append(resolved.missing, to: &state.missing)
-                state.partial = state.partial || resolved.incomplete
-                for root in resolved.roots {
-                    // The resolver already skips excluded wildcard folders; this is the same rule applied
-                    // to the finished root, so a root can never be walked against the rule's patterns.
-                    if rule.excludesRoot(root) {
-                        Self.append([root], to: &state.excluded)
-                        continue
-                    }
-                    queue.append(Unit(ruleIndex: index, rule: rule, root: root, slot: nextSlot))
-                    nextSlot += 1
-                    state.remaining += 1
-                }
-            }
+        // Roots were resolved up front (`ruleRoots`). Rules that are not walked (owner commands,
+        // computed rows) have none, so they finish at once.
+        let resolution = ruleRoots[index]
+        state.partial = resolution.incomplete
+        state.needsAccess = resolution.needsAccess
+        state.missing = resolution.missing
+        state.excluded = resolution.excluded
+        for root in resolution.roots {
+            queue.append(Unit(ruleIndex: index, rule: rule, root: root, slot: nextSlot))
+            nextSlot += 1
+            state.remaining += 1
         }
         if state.remaining == 0 { state.finished = clock.now }
         states[index] = state
