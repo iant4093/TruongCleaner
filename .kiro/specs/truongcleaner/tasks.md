@@ -63,7 +63,7 @@ brief in `docs/briefs/<id>.md`.
 |---|---|---|---|---|---|
 | [ ] | 4.1 | B | a | Info rules (`system.*`, `logs.system`, `mail.store`, …) + System Data page + Copy Command | SYS-03..05 |
 | [ ] | 4.2 | B | b | Developer rules (Xcode, SwiftPM, npm, Yarn, Bun, pip, uv, Cargo, Gradle, Maven, CocoaPods, Android) | RULE-01 |
-| [ ] | 4.3 | B | c | `OwnerCommand` runner + `dev.simUnavailable`, `dev.simDevices`, `dev.simRuntimes`, `dev.homebrew`, `dev.pnpm`, `dev.go*`, `dev.dockerDangling` (tests use fake executables in fixtures) | CLEAN-07 |
+| [x] | 4.3 | B | c | `OwnerCommand` runner + `dev.simUnavailable`, `dev.simDevices`, `dev.simRuntimes`, `dev.homebrew`, `dev.pnpm`, `dev.go*`, `dev.dockerDangling` (tests use fake executables in fixtures) | CLEAN-07 |
 | [ ] | 4.4 | B | | Mail, iOS, installers rules | RULE-01 |
 | [ ] | 4.5 | B | | Developer page with simulators table and project folders | UI-02 |
 | [ ] | 4.6 | I | | System Data page vs System Settings ✋ | — |
@@ -72,8 +72,8 @@ brief in `docs/briefs/<id>.md`.
 
 | ✓ | ID | Owner | Par | Task | Reqs |
 |---|---|---|---|---|---|
-| [ ] | 5.1 | B | a | Large & Old Files page (Table, Quick Look) | UI-02, UI-05 |
-| [ ] | 5.2 | B | b | Space Lens sunburst with drill-down (fallback to `Canvas` if Charts is slow) | PERF-07 |
+| [x] | 5.1 | B | a | Large & Old Files page (Table, Quick Look) | UI-02, UI-05 |
+| [x] | 5.2 | B | b | Space Lens sunburst with drill-down (fallback to `Canvas` if Charts is slow) | PERF-07 |
 | [ ] | 5.3 | B | c | Settings window: delete mode, exclusions, rules, update check | RULE-05, DIST-04 |
 | [ ] | 5.4 | B | | `AccessProbe` + Needs Access rows + re-check on activate | PERM-01..04 |
 | [ ] | 5.5 | B | | Update checker (GitHub API, once per day) | DIST-04, DIST-05 |

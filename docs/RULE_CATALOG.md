@@ -69,7 +69,7 @@ open files, running owners, inode re-check).
 |---|---|---|---|---|---|
 | `user.caches` | Safe | `~/Library/Caches` children | Owner not running (bundle ID = folder name when it looks like one); protected list; skip `Google`, `Firefox` (browser rules own them) | user | Apps keep temporary copies here and rebuild them. |
 | `user.containerCaches` | Safe | `~/Library/Containers/*/Data/Library/Caches` children | Skip `com.apple.*` except listed safe ones; owner not running | fda (macOS 27 other teams) | Caches of App Store apps. |
-| `user.groupContainerCaches` | Safe | `~/Library/Group Containers/*/Library/Caches` children | Skip `group.com.apple.*`, `*.com.apple.*`, `systemgroup.*` | fda | Caches shared by an app family. |
+| `user.groupContainerCaches` | Review | `~/Library/Group Containers/*/Library/Caches` children | Skip `com.apple.*`, `group.com.apple.*`, `*.com.apple.*`, `systemgroup.*`. Review (not Safe) since 3.2b: a group container's name does not say which app must be closed | fda | Caches shared by an app family. |
 | `user.savedState` | Safe | `~/Library/Saved Application State` children | Owner not running | user | Window positions to restore after restart. |
 | `user.darwinCache` | Review | `getconf DARWIN_USER_CACHE_DIR` children | minAge 7 d; owner not running; open-file check | user | Per-user system caches in `/private/var/folders`. |
 | `user.darwinTemp` | Review | `getconf DARWIN_USER_TEMP_DIR` children | minAge 3 d; open-file check | user | Temporary files apps forgot to delete. |
@@ -94,7 +94,7 @@ open files, running owners, inode re-check).
 |---|---|---|---|---|---|
 | `trash.user` | Review | `~/.Trash` children | Permanent delete only, after confirm | fda | Files you already deleted. Emptying cannot be undone. |
 | `trash.ours` | Safe | Items TruongCleaner moved, from history | Still in Trash and same inode | user | Finish a clean and free the space. |
-| `trash.volumes` | Review | `/Volumes/*/.Trashes/<uid>` | Volume mounted, writable | user | Trash on external drives. |
+| `trash.volumes` | Review | `/Volumes/*/.Trashes/<uid>` | Volume mounted, writable. **Inert in v1** (measure only): the model has no user-ID root segment, and `*` would reach other users' Trash | user | Trash on external drives. |
 
 ### 4.4 Browsers
 

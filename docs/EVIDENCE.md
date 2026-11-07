@@ -174,3 +174,23 @@ Data, purgeable, free, other volumes 206.7 MB).
 Merged main: lint 0 violations (45 files), deletion-site check PASS, package
 tests PASS (CleanerScanner 73+29, CleanerCore 93, CleanerActions 58), Debug app
 builds (2.4 MB Debug).
+
+### Tasks 3.2b, 4.3, 5.1, 5.2 review (2026-11-06)
+
+Merged into `main` (keep-both conflicts in `AppModel.swift`/`RootView.swift`
+resolved by the orchestrator). Merged main: lint 0 violations in 71 files,
+deletion-site check PASS, package tests PASS, Debug app builds.
+
+- 3.2b: owners per root (Chrome running blocks only Chrome's caches), owner from a
+  wildcard root segment (container caches), wildcard root-segment exclusions (Apple
+  containers never walked or probed), `.savedState` suffix stripping,
+  `Action.deletePermanently` for Trash rules, bundle check only for real bundles
+  (`com.example.App` cache folders no longer denied). `user.groupContainerCaches`
+  changed Safe → Review; `trash.volumes` stays inert. Catalog updated.
+- 4.3: owner-command allow-list exactly as briefed; the first existing candidate
+  decides (no fall-through); `noBootedSimulator` requires every device `Shutdown`
+  (unknown blocks); runtime IDs may not start with `-`. Tests use fake scripts only.
+- 5.1: `LargeFileFinder` (topN by size, then date filter; reports `mayBeMissingFiles`
+  when the size-ranked list could hide old files). `NSPasteboard` approved in `tech.md`.
+- 5.2: Space Lens sunburst, depth 3, ≤ 40 slices per node, breadcrumb, Quick Look,
+  Needs-access rows.

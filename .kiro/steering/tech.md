@@ -16,7 +16,10 @@ inclusion: always
   assigns them (Xcode 27 `@State` macro rule).
 - AppKit only for: `NSWorkspace.icon(forFile:)`, `NSWorkspace.recycle`,
   `NSWorkspace.activateFileViewerSelecting`, `NSWorkspace.open`, `NSOpenPanel`,
-  `NSRunningApplication`. Nothing else without approval.
+  `NSRunningApplication`, `NSPasteboard` (Copy Path / Copy Command; approved
+  2026-11-06). Nothing else without approval.
+- `CleanerCore.Environment` clashes with SwiftUI's `@Environment` in files that
+  import both. In app files, write `CleanerCore.Environment` explicitly.
 - **Zero third-party dependencies**, runtime or build. System frameworks only.
   No CocoaPods, no Carthage, no SwiftPM remote packages.
 - Not sandboxed. Hardened Runtime off while ad-hoc signed.
