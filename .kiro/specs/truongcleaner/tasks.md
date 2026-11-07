@@ -27,7 +27,7 @@ brief in `docs/briefs/<id>.md`.
 |---|---|---|---|---|---|
 | [x] | 1.1 | B | | Xcode project (objectVersion 77, synchronized groups), app target `TruongCleaner`, bundle ID `com.iant4093.TruongCleaner`, macOS 26.0, arm64, Swift 6, warnings as errors, links local `CleanerKit`; empty `NavigationSplitView` window with the sidebar from `docs/UI.md` §3 and `IconTile` | UI-01 |
 | [x] | 1.2 | B | | `Packages/CleanerKit` skeleton: three library targets, `tcbench` exe, test targets, `Fixtures` helper (`FixtureTree`), one passing test per target | — |
-| [~] | 1.3 | B | a | `scripts/`: `lint.sh` (pinned SwiftLint + checksum), `test.sh package`, `build.sh {debug,release,all}`, `package.sh` (ad-hoc sign, verify, DMG, ZIP, dSYM zip, SHA256SUMS), `install.sh`, `check-workflows.sh`, `check-deletion-sites.sh`, `clean.sh` (removes `build/` only) | DIST-01, DIST-03, SAFE-01 |
+| [x] | 1.3 | B | a | `scripts/`: `lint.sh` (pinned SwiftLint + checksum), `test.sh package`, `build.sh {debug,release,all}`, `package.sh` (ad-hoc sign, verify, DMG, ZIP, dSYM zip, SHA256SUMS), `install.sh`, `check-workflows.sh`, `check-deletion-sites.sh`, `clean.sh` (removes `build/` only) | DIST-01, DIST-03, SAFE-01 |
 | [x] | 1.4 | O | a | `.github/workflows/ci.yml`, `dependabot.yml`, `actionlint.yaml`, `.swiftlint.yml`; SHA pins | CI-01..04, DIST-02 |
 | [ ] | 1.5 | O | | README in TruongCam format; LICENSE; first push (after Q5) | — |
 | [ ] | 1.6 | I | | Install the first Latest release with `install.sh` ✋ | — |
