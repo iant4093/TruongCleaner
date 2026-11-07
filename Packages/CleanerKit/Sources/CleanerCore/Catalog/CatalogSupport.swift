@@ -3,8 +3,9 @@
 
 extension RootSpec {
     /// A root below the user's home folder, such as `["Library", "Caches"]`.
-    static func home(_ components: [String]) -> RootSpec {
-        RootSpec(base: .home, components: components)
+    /// `owners` must be closed before anything under this root is removed.
+    static func home(_ components: [String], owners: [OwnerSpec] = []) -> RootSpec {
+        RootSpec(base: .home, components: components, owners: owners)
     }
 
     /// A root below the file system root, such as `["Library", "Logs"]` for `/Library/Logs`.

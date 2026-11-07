@@ -6,9 +6,9 @@ import Testing
 enum CatalogFixture {
     /// Name of every inert placeholder: a non-Info rule whose match is `.measureOnly`, so the
     /// matcher never offers anything for it. Adding or removing one must be a deliberate change here.
-    static let inertRuleIDs: Set<String> = [
-        "user.containerCaches", "user.groupContainerCaches", "trash.ours", "trash.volumes",
-    ]
+    /// `trash.ours` waits for the history file (3.3). `trash.volumes` waits for a user-ID root base:
+    /// `/Volumes/*/.Trashes/<uid>` cannot be written as a `RootSpec` without also reaching other users.
+    static let inertRuleIDs: Set<String> = ["trash.ours", "trash.volumes"]
 
     static func rule(_ id: String) throws -> Rule {
         try #require(Catalog.all.first { $0.id == id }, "rule \(id) is missing from the catalog")

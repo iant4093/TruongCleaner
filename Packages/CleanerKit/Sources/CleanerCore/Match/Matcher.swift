@@ -17,8 +17,9 @@ public enum Matcher {
     /// `excludeNames`, `requiresSibling`) and the path policy to candidates found
     /// under one expanded root.
     ///
-    /// Checks run in this order and the first failure decides: Info rule, root
-    /// itself, outside the root, protected path, (shape: candidates that do not
+    /// Checks run in this order and the first failure decides: Info rule, a root
+    /// that `excludeRootSegments` leaves out, root itself, outside the root, protected path,
+    /// (shape: candidates that do not
     /// fit the match spec or depth are left out), symlink, excluded name,
     /// required sibling, age, and last `keepNewest` across the survivors.
     ///
@@ -60,6 +61,11 @@ public enum Matcher {
             glob = GlobPattern(text)
         case .files(let wanted):
             extensions = Set(wanted.map { PathText.fold($0.hasPrefix(".") ? String($0.dropFirst()) : $0) })
+        }
+
+        // A root that `excludeRootSegments` leaves out is not one of the rule's roots.
+        if rule.excludesRoot(root) {
+            return candidates.map { .skipped($0, .outsideRoots) }
         }
 
         let rootComponents = PathText.components(of: root)

@@ -1,7 +1,7 @@
 /// Rules from `docs/RULE_CATALOG.md` §4.5 (App caches, third-party), in catalog order.
 ///
-/// Only the folders named in the catalog are roots. As in `BrowserRules`, `Guards.owners` is
-/// one list per rule, so the gate skips the rule's items while any listed app runs.
+/// Only the folders named in the catalog are roots. As in `BrowserRules`, `apps.electronCaches`
+/// puts each app's bundle IDs on that app's own roots, so a running Slack blocks only Slack's caches.
 enum AppRules {
     /// Every rule in the App caches section.
     static let all: [Rule] = [
@@ -51,10 +51,13 @@ enum AppRules {
         category: .apps,
         tier: .safe,
         roots: electronApps.flatMap { app in
-            electronCacheFolders.map { RootSpec.home(["Library", "Application Support"] + app.support + $0) }
+            electronCacheFolders.map {
+                RootSpec.home(
+                    ["Library", "Application Support"] + app.support + $0,
+                    owners: app.bundleIDs.map { OwnerSpec.bundleID($0) })
+            }
         },
         match: .children,
-        guards: Guards(owners: electronApps.flatMap { $0.bundleIDs.map { OwnerSpec.bundleID($0) } }),
         access: .fda,
         action: .trash,
         title: "Chat and editor app caches",

@@ -245,7 +245,7 @@ struct SafetyRulesTests {
         try await withHarness { h in
             let item = try h.tree.addFile("home/Library/Caches/com.example.Tool/blob.bin")
             let apps = RecordingApps(answer: .running)
-            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID]))
+            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID(stripSuffix: nil)]))
             let verdict = try await h.verdict(for: item, rule: rule, context: h.context(apps: apps))
             #expect(verdict == .deny(.ownerOpen("com.example.Tool")))
             #expect(apps.owners == [.bundleID("com.example.Tool")])
@@ -257,7 +257,7 @@ struct SafetyRulesTests {
         try await withHarness { h in
             let item = try h.tree.addDirectory("home/Library/Caches/\(folder)")
             let apps = RecordingApps(answer: .running)
-            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID]))
+            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID(stripSuffix: nil)]))
             let verdict = try await h.verdict(for: item, rule: rule, context: h.context(apps: apps))
             #expect(verdict == .allow)
             #expect(apps.owners.isEmpty)
@@ -268,7 +268,7 @@ struct SafetyRulesTests {
         try await withHarness { h in
             let item = try h.tree.addDirectory("home/Library/Caches/net.example.kitty")
             let apps = FakeApps(answers: [.bundleID("net.example.kitty"): .running])
-            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID]))
+            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID(stripSuffix: nil)]))
             let verdict = try await h.verdict(for: item, rule: rule, context: h.context(apps: apps))
             #expect(verdict == .deny(.ownerOpen("net.example.kitty")))
         }
@@ -277,12 +277,201 @@ struct SafetyRulesTests {
     @Test func incident_mole1584_ownerThatCannotBeCheckedKeepsTheItem() async throws {
         try await withHarness { h in
             let item = try h.tree.addDirectory("home/Library/Caches/com.example.Tool")
-            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID]))
+            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID(stripSuffix: nil)]))
             let context = h.context(apps: FakeApps(fallback: .unknown))
             #expect(try await h.verdict(for: item, rule: rule, context: context) == .deny(.ownerUnknown))
             // Nothing is remembered: the next ask gets a fresh answer.
             let open = h.context(apps: FakeApps(fallback: .notRunning))
             #expect(try await h.verdict(for: item, rule: rule, context: open) == .allow)
+        }
+    }
+
+    // MARK: Rule 7: owners per root, per wildcard segment, with a suffix
+
+    /// Two browsers, each root carrying only its own browser as owner.
+    private func browserRule(_ h: GateHarness) -> (rule: Rule, chrome: URL, brave: URL) {
+        let chromeSpec = RootSpec(
+            base: .home, components: ["Library", "Caches", "Google", "Chrome"],
+            owners: [.bundleID("com.google.Chrome")])
+        let braveSpec = RootSpec(
+            base: .home, components: ["Library", "Caches", "BraveSoftware", "Brave-Browser"],
+            owners: [.bundleID("com.brave.Browser")])
+        let rule = h.rule(roots: [chromeSpec, braveSpec])
+        return (
+            rule, h.caches.appending(path: "Google/Chrome", directoryHint: .isDirectory),
+            h.caches.appending(path: "BraveSoftware/Brave-Browser", directoryHint: .isDirectory)
+        )
+    }
+
+    @Test func rule07_runningChromeBlocksOnlyChromesCaches() async throws {
+        try await withHarness { h in
+            let (rule, chromeRoot, braveRoot) = browserRule(h)
+            let chrome = try h.tree.addFile("home/Library/Caches/Google/Chrome/Default/blob.bin")
+            let brave = try h.tree.addFile("home/Library/Caches/BraveSoftware/Brave-Browser/Default/blob.bin")
+            let context = h.context(
+                roots: [chromeRoot, braveRoot],
+                apps: FakeApps(answers: [.bundleID("com.google.Chrome"): .running]))
+
+            let chromeVerdict = try await h.verdict(
+                for: chrome.deletingLastPathComponent(), scanRoot: chromeRoot, rule: rule, context: context)
+            let braveVerdict = try await h.verdict(
+                for: brave.deletingLastPathComponent(), scanRoot: braveRoot, rule: rule, context: context)
+            #expect(chromeVerdict == .deny(.ownerOpen("com.google.Chrome")))
+            #expect(braveVerdict == .allow)
+        }
+    }
+
+    @Test func rule07_theOtherBrowserRunningBlocksTheOtherRoot() async throws {
+        try await withHarness { h in
+            let (rule, chromeRoot, braveRoot) = browserRule(h)
+            let chrome = try h.tree.addDirectory("home/Library/Caches/Google/Chrome/Default")
+            let brave = try h.tree.addDirectory("home/Library/Caches/BraveSoftware/Brave-Browser/Default")
+            let context = h.context(
+                roots: [chromeRoot, braveRoot],
+                apps: FakeApps(answers: [.bundleID("com.brave.Browser"): .running]))
+            #expect(try await h.verdict(for: chrome, scanRoot: chromeRoot, rule: rule, context: context) == .allow)
+            #expect(
+                try await h.verdict(for: brave, scanRoot: braveRoot, rule: rule, context: context)
+                    == .deny(.ownerOpen("com.brave.Browser")))
+        }
+    }
+
+    @Test func rule07_rootOwnersAndRuleOwnersAreBothChecked() async throws {
+        try await withHarness { h in
+            let (_, chromeRoot, braveRoot) = browserRule(h)
+            let item = try h.tree.addDirectory("home/Library/Caches/Google/Chrome/Default")
+            // No root specs with owners on the rule: the owner comes from the rule and the context.
+            let rule = h.rule(guards: Guards(owners: [.processName("helper")]))
+            let apps = FakeApps(answers: [
+                .processName("helper"): .running, .bundleID("com.google.Chrome"): .running,
+            ])
+            let context = h.context(
+                roots: [chromeRoot, braveRoot], apps: apps,
+                rootOwners: [chromeRoot: [.bundleID("com.google.Chrome")]])
+            #expect(
+                try await h.verdict(for: item, scanRoot: chromeRoot, rule: rule, context: context)
+                    == .deny(.ownerOpen("helper")))
+            let quiet = h.context(
+                roots: [chromeRoot, braveRoot],
+                apps: FakeApps(answers: [.bundleID("com.google.Chrome"): .running]),
+                rootOwners: [chromeRoot: [.bundleID("com.google.Chrome")]])
+            #expect(
+                try await h.verdict(for: item, scanRoot: chromeRoot, rule: rule, context: quiet)
+                    == .deny(.ownerOpen("com.google.Chrome")))
+            // A root owner entry for another root does not apply here.
+            let other = h.context(
+                roots: [chromeRoot, braveRoot],
+                apps: FakeApps(answers: [.bundleID("com.google.Chrome"): .running]),
+                rootOwners: [braveRoot: [.bundleID("com.google.Chrome")]])
+            #expect(try await h.verdict(for: item, scanRoot: chromeRoot, rule: rule, context: other) == .allow)
+        }
+    }
+
+    @Test func rule07_rootOwnerThatCannotBeCheckedKeepsTheItem() async throws {
+        try await withHarness { h in
+            let (rule, chromeRoot, braveRoot) = browserRule(h)
+            let item = try h.tree.addDirectory("home/Library/Caches/Google/Chrome/Default")
+            let context = h.context(roots: [chromeRoot, braveRoot], apps: FakeApps(fallback: .unknown))
+            #expect(
+                try await h.verdict(for: item, scanRoot: chromeRoot, rule: rule, context: context)
+                    == .deny(.ownerUnknown))
+        }
+    }
+
+    private static let containerSpec = RootSpec(
+        base: .home, components: ["Library", "Containers", "*", "Data", "Library", "Caches"])
+
+    @Test func rule07_containerFolderNameIsAskedAsABundleID() async throws {
+        try await withHarness { h in
+            let rule = h.rule(
+                guards: Guards(owners: [.rootSegmentAsBundleID(index: 2)]), roots: [Self.containerSpec])
+            let root = h.tree.url(for: "home/Library/Containers/com.example.Tool/Data/Library/Caches")
+            let item = try h.tree.addFile("home/Library/Containers/com.example.Tool/Data/Library/Caches/blob.bin")
+            let apps = RecordingApps(answer: .running)
+            let verdict = try await h.verdict(
+                for: item, scanRoot: root, rule: rule, context: h.context(roots: [root], apps: apps))
+            #expect(verdict == .deny(.ownerOpen("com.example.Tool")))
+            #expect(apps.owners == [.bundleID("com.example.Tool")])
+
+            // The app is closed: the same item is allowed.
+            let quiet = h.context(roots: [root], apps: FakeApps(fallback: .notRunning))
+            #expect(try await h.verdict(for: item, scanRoot: root, rule: rule, context: quiet) == .allow)
+        }
+    }
+
+    @Test func rule07_containerFolderThatIsNotABundleIDHasNoOwner() async throws {
+        try await withHarness { h in
+            let rule = h.rule(
+                guards: Guards(owners: [.rootSegmentAsBundleID(index: 2)]), roots: [Self.containerSpec])
+            let root = h.tree.url(for: "home/Library/Containers/plain/Data/Library/Caches")
+            let item = try h.tree.addFile("home/Library/Containers/plain/Data/Library/Caches/blob.bin")
+            let apps = RecordingApps(answer: .running)
+            let verdict = try await h.verdict(
+                for: item, scanRoot: root, rule: rule, context: h.context(roots: [root], apps: apps))
+            #expect(verdict == .allow)
+            #expect(apps.owners.isEmpty)
+        }
+    }
+
+    @Test func rule07_rootSegmentThatCannotBeFoundKeepsTheItem() async throws {
+        try await withHarness { h in
+            // The rule's root specs do not fit the root the item lies under: the segment is unknown.
+            let rule = h.rule(guards: Guards(owners: [.rootSegmentAsBundleID(index: 2)]))
+            let item = try h.tree.addFile("home/Library/Caches/blob.bin")
+            let apps = RecordingApps(answer: .notRunning)
+            #expect(
+                try await h.verdict(for: item, rule: rule, context: h.context(apps: apps)) == .deny(.ownerUnknown))
+            #expect(apps.owners.isEmpty)
+        }
+    }
+
+    @Test func rule02_aRootTheRuleExcludesBySegmentIsNotOneOfItsRoots() async throws {
+        try await withHarness { h in
+            let rule = h.rule(
+                guards: Guards(excludeRootSegments: ["com.apple.*"]), roots: [Self.containerSpec])
+            let apple = h.tree.url(for: "home/Library/Containers/com.apple.Notes/Data/Library/Caches")
+            let other = h.tree.url(for: "home/Library/Containers/com.example.Tool/Data/Library/Caches")
+            let appleItem = try h.tree.addFile("home/Library/Containers/com.apple.Notes/Data/Library/Caches/a.bin")
+            let otherItem = try h.tree.addFile("home/Library/Containers/com.example.Tool/Data/Library/Caches/a.bin")
+            let context = h.context(roots: [apple, other])
+            #expect(
+                try await h.verdict(for: appleItem, scanRoot: apple, rule: rule, context: context)
+                    == .deny(.outsideRoots))
+            #expect(try await h.verdict(for: otherItem, scanRoot: other, rule: rule, context: context) == .allow)
+        }
+    }
+
+    @Test func rule07_savedStateFolderNameLosesItsSuffixBeforeTheOwnerLookup() async throws {
+        try await withHarness { h in
+            let saved = try h.tree.addDirectory("home/Library/Saved Application State")
+            let item = try h.tree.addDirectory("home/Library/Saved Application State/com.example.App.savedState")
+            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID(stripSuffix: ".savedState")]))
+            let apps = RecordingApps(answer: .running)
+            let context = h.context(roots: [saved], apps: apps)
+            #expect(
+                try await h.verdict(for: item, scanRoot: saved, rule: rule, context: context)
+                    == .deny(.ownerOpen("com.example.App")))
+            #expect(apps.owners == [.bundleID("com.example.App")])
+
+            // Two parts after stripping is not a bundle ID: no owner, nothing asked.
+            let short = try h.tree.addDirectory("home/Library/Saved Application State/a.b.savedState")
+            let quiet = RecordingApps(answer: .running)
+            let allowed = try await h.verdict(
+                for: short, scanRoot: saved, rule: rule, context: h.context(roots: [saved], apps: quiet))
+            #expect(allowed == .allow)
+            #expect(quiet.owners.isEmpty)
+        }
+    }
+
+    @Test func rule07_theSameOwnerIsAskedOnce() async throws {
+        try await withHarness { h in
+            let spec = RootSpec(
+                base: .home, components: ["Library", "Caches"], owners: [.bundleID("com.example.Tool")])
+            let rule = h.rule(guards: Guards(owners: [.bundleID("com.example.Tool")]), roots: [spec])
+            let item = try h.tree.addFile("home/Library/Caches/a.txt")
+            let apps = RecordingApps(answer: .notRunning)
+            #expect(try await h.verdict(for: item, rule: rule, context: h.context(apps: apps)) == .allow)
+            #expect(apps.owners == [.bundleID("com.example.Tool")])
         }
     }
 
@@ -403,6 +592,7 @@ struct SafetyRulesTests {
     func rule13_bundleAndItsContentsAreDenied(ext: String) async throws {
         try await withHarness { h in
             let inner = try h.tree.addFile("home/Library/Caches/Foo.\(ext)/Contents/x.bin")
+            try h.tree.addFile("home/Library/Caches/Foo.\(ext)/Contents/Info.plist")
             let bundle = h.tree.url(for: "home/Library/Caches/Foo.\(ext)")
             #expect(try await h.verdict(for: bundle) == .deny(.insideBundle))
             #expect(try await h.verdict(for: inner) == .deny(.insideBundle))
@@ -413,8 +603,10 @@ struct SafetyRulesTests {
         try await withHarness { h in
             let installers = try h.tree.addDirectory("home/Installers")
             let inner = try h.tree.addFile("home/Installers/Install Foo.app/Contents/x.bin")
+            try h.tree.addFile("home/Installers/Install Foo.app/Contents/Info.plist")
             let app = h.tree.url(for: "home/Installers/Install Foo.app")
-            let framework = try h.tree.addDirectory("home/Installers/Foo.framework")
+            let framework = h.tree.url(for: "home/Installers/Foo.framework")
+            try h.tree.addFile("home/Installers/Foo.framework/Info.plist")
 
             let allowing = h.context(roots: [installers], allowWholeBundle: true)
             #expect(try await h.verdict(for: app, scanRoot: installers, context: allowing) == .allow)
@@ -427,13 +619,67 @@ struct SafetyRulesTests {
         }
     }
 
+    @Test(arguments: [
+        "Contents/Info.plist", "Info.plist", "Contents/_CodeSignature/CodeResources",
+    ])
+    func rule13_anyOneBundleMarkerMakesAFolderABundle(marker: String) async throws {
+        try await withHarness { h in
+            let inner = try h.tree.addFile("home/Library/Caches/Foo.app/Resources/x.bin")
+            try h.tree.addFile("home/Library/Caches/Foo.app/\(marker)")
+            let bundle = h.tree.url(for: "home/Library/Caches/Foo.app")
+            #expect(try await h.verdict(for: bundle) == .deny(.insideBundle))
+            #expect(try await h.verdict(for: inner) == .deny(.insideBundle))
+        }
+    }
+
+    @Test func rule13_aCacheFolderNamedLikeABundleIDIsNotABundle() async throws {
+        try await withHarness { h in
+            // "com.example.App" has the extension "App", which is a bundle extension.
+            let inner = try h.tree.addFile("home/Library/Caches/com.example.App/data/blob.bin")
+            let folder = h.tree.url(for: "home/Library/Caches/com.example.App")
+            #expect(try await h.verdict(for: folder) == .allow)
+            #expect(try await h.verdict(for: inner) == .allow)
+        }
+    }
+
+    @Test func rule13_aFileOrEmptyFolderWithABundleNameIsNotABundle() async throws {
+        try await withHarness { h in
+            let file = try h.tree.addFile("home/Library/Caches/Foo.framework")
+            let empty = try h.tree.addDirectory("home/Library/Caches/Bar.bundle")
+            #expect(try await h.verdict(for: file) == .allow)
+            #expect(try await h.verdict(for: empty) == .allow)
+        }
+    }
+
+    @Test func rule13_aRealBundleAboveTheItemDeniesEvenDeepInside() async throws {
+        try await withHarness { h in
+            let deep = try h.tree.addFile("home/Library/Caches/Foo.app/Contents/Resources/deep/er/x.bin")
+            try h.tree.addFile("home/Library/Caches/Foo.app/Contents/Info.plist")
+            #expect(try await h.verdict(for: deep) == .deny(.insideBundle))
+        }
+    }
+
+    @Test func rule13_aBundleThatCannotBeInspectedIsKept() async throws {
+        try await withHarness { h in
+            let bundle = try h.tree.addDirectory("home/Library/Caches/Foo.app")
+            try h.tree.addFile("home/Library/Caches/Foo.app/Contents/Info.plist")
+            let finding = try await h.scanned(bundle)
+            try h.tree.setPermissions("home/Library/Caches/Foo.app", mode: 0)
+            let verdict = await SafetyGate().authorize(finding, rule: h.rule(), context: h.context())
+            guard case .deny(.probeFailed) = verdict else {
+                Issue.record("Expected probeFailed, got \(verdict)")
+                return
+            }
+        }
+    }
+
     // MARK: Rule 15: dry run is the real run
 
     @Test func rule15_previewAndCleanGetTheSameVerdict() async throws {
         try await withHarness { h in
             let file = try h.tree.addFile("home/Library/Caches/com.example.Tool/a.bin")
             let allowed = try await h.scanned(file)
-            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID]))
+            let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID(stripSuffix: nil)]))
             let gate = SafetyGate()
 
             let quiet = h.context()
@@ -460,6 +706,19 @@ struct SafetyRulesTests {
             let file = try h.tree.addFile("home/Library/Caches/a.txt")
             let verdict = try await h.verdict(for: file, rule: h.rule(tier: tier, action: action))
             #expect(verdict == .deny(.infoRule))
+        }
+    }
+
+    @Test func deletePermanentlyIsJudgedLikeTrash() async throws {
+        try await withHarness { h in
+            let file = try h.tree.addFile("home/Library/Caches/a.txt")
+            let rule = h.rule(action: .deletePermanently)
+            #expect(try await h.verdict(for: file, rule: rule) == .allow)
+            // Every other check still applies.
+            let busy = h.context(files: FakeFiles(answer: true))
+            #expect(try await h.verdict(for: file, rule: rule, context: busy) == .deny(.openFiles))
+            let info = h.rule(tier: .info, action: .deletePermanently)
+            #expect(try await h.verdict(for: file, rule: info) == .deny(.infoRule))
         }
     }
 

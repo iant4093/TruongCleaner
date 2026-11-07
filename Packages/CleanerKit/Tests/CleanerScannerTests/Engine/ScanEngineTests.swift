@@ -571,4 +571,71 @@ struct ScanEngineTests {
         #expect(finished == rules.map(\.id))
         if case .finished = events.last {} else { Issue.record("`.finished` is not the last event") }
     }
+
+    // MARK: excludeRootSegments
+
+    @Test
+    func excludedWildcardFoldersAreNeitherWalkedNorProbed() async throws {
+        let fixture = try EngineFixture()
+        defer { fixture.remove() }
+        for container in ["com.apple.Notes", "com.example.A", "com.example.B"] {
+            try fixture.file("Library/Containers/\(container)/Data/Library/Caches/blob.bin", pages: 2)
+        }
+        // macOS would refuse this one. The engine must not even try to open it.
+        try fixture.tree.setPermissions("home/Library/Containers/com.apple.Notes", mode: 0o000)
+
+        let guards = Guards(excludeRootSegments: ["com.apple.*"])
+        let rule = makeRule(
+            "test.containers", roots: [["Library", "Containers", "*", "Data", "Library", "Caches"]], guards: guards)
+        let (_, report) = await fixture.scan([rule])
+        let result = try #require(fixture.result("test.containers", in: report))
+
+        #expect(result.findings.map(\.name) == ["blob.bin", "blob.bin"])
+        #expect(Set(result.findings.map { $0.url.pathComponents.dropLast(4).last }) == ["com.example.A", "com.example.B"])
+        #expect(result.measuredBytes == fixture.bytes(4))
+        #expect(result.excludedRoots.map(\.lastPathComponent) == ["com.apple.Notes"])
+        #expect(result.needsAccess.isEmpty)
+        #expect(result.missingRoots.isEmpty)
+        #expect(result.partial == false)
+    }
+
+    @Test
+    func catalogContainerRulesLeaveAppleFoldersOut() async throws {
+        let fixture = try EngineFixture()
+        defer { fixture.remove() }
+        for container in ["com.apple.Notes", "com.example.A", "com.example.B"] {
+            try fixture.file("Library/Containers/\(container)/Data/Library/Caches/blob.bin", pages: 1)
+        }
+        for group in ["group.com.apple.notes", "systemgroup.com.apple.x", "ABCDE12345.com.apple.y", "group.com.example.z"] {
+            try fixture.file("Library/Group Containers/\(group)/Library/Caches/blob.bin", pages: 1)
+        }
+        let containers = try #require(Catalog.all.first { $0.id == "user.containerCaches" })
+        let groups = try #require(Catalog.all.first { $0.id == "user.groupContainerCaches" })
+
+        let (_, report) = await fixture.scan([containers, groups])
+        let containerResult = try #require(fixture.result(containers.id, in: report))
+        let groupResult = try #require(fixture.result(groups.id, in: report))
+
+        // `<container>/Data/Library/Caches/blob.bin` and `<group>/Library/Caches/blob.bin`.
+        func owners(_ result: RuleResult, above levels: Int) -> [String] {
+            result.findings.map { $0.url.pathComponents.dropLast(levels).last ?? "" }
+        }
+        #expect(owners(containerResult, above: 4) == ["com.example.A", "com.example.B"])
+        #expect(containerResult.excludedRoots.map(\.lastPathComponent) == ["com.apple.Notes"])
+        #expect(owners(groupResult, above: 3) == ["group.com.example.z"])
+        #expect(groupResult.excludedRoots.map(\.lastPathComponent)
+            == ["ABCDE12345.com.apple.y", "group.com.apple.notes", "systemgroup.com.apple.x"])
+    }
+
+    @Test
+    func ruleWithoutExcludeRootSegmentsReportsNoExcludedRoots() async throws {
+        let fixture = try EngineFixture()
+        defer { fixture.remove() }
+        try fixture.file("Library/Containers/com.apple.Maps/Data/Library/Caches/blob.bin", pages: 1)
+        let rule = makeRule("test.containers", roots: [["Library", "Containers", "*", "Data", "Library", "Caches"]])
+        let (_, report) = await fixture.scan([rule])
+        let result = try #require(fixture.result("test.containers", in: report))
+        #expect(result.excludedRoots.isEmpty)
+        #expect(result.findings.count == 1)
+    }
 }

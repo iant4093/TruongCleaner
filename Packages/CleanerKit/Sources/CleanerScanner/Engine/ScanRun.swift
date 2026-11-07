@@ -98,6 +98,7 @@ private struct RunPlan {
         var measuredPrivateBytes: Int64 = 0
         var needsAccess: [URL] = []
         var missing: [URL] = []
+        var excluded: [URL] = []
         var partial = false
 
         var isReady: Bool { finished != nil }
@@ -200,11 +201,19 @@ private struct RunPlan {
                 state.partial = true
                 continue
             }
-            let resolved = RootResolver.resolve(expanded, trusted: trusted)
+            let resolved = RootResolver.resolve(
+                expanded, trusted: trusted, excluding: rule.guards.excludeRootSegments)
+            Self.append(resolved.excluded, to: &state.excluded)
             Self.append(resolved.needsAccess, to: &state.needsAccess)
             Self.append(resolved.missing, to: &state.missing)
             state.partial = state.partial || resolved.incomplete
             for root in resolved.roots {
+                // The resolver already skips excluded wildcard folders; this is the same rule applied
+                // to the finished root, so a root can never be walked against the rule's patterns.
+                if rule.excludesRoot(root) {
+                    Self.append([root], to: &state.excluded)
+                    continue
+                }
                 queue.append(Unit(ruleIndex: index, rule: rule, root: root, slot: nextSlot))
                 nextSlot += 1
                 state.remaining += 1
@@ -240,6 +249,7 @@ private struct RunPlan {
             measuredPrivateBytes: measuredPrivate,
             needsAccess: state.needsAccess.sorted { $0.plainPath < $1.plainPath },
             missingRoots: state.missing.sorted { $0.plainPath < $1.plainPath },
+            excludedRoots: state.excluded.sorted { $0.plainPath < $1.plainPath },
             partial: state.partial || state.forcedPartial,
             duration: start.duration(to: state.finished ?? clock.now)
         )

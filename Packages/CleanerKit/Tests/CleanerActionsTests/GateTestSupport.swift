@@ -30,18 +30,19 @@ struct GateHarness {
         PathPolicy(environment: environment, userExclusions: exclusions)
     }
 
-    /// A rule. Only the fields the gate reads matter; `roots` is a placeholder because the
-    /// gate takes concrete roots from the context.
+    /// A rule. Only the fields the gate reads matter. `roots` is a placeholder unless a test needs
+    /// root specs (owners, wildcard segments); the gate takes concrete roots from the context.
     func rule(
         tier: Tier = .safe,
         action: Action = .trash,
-        guards: Guards = Guards()
+        guards: Guards = Guards(),
+        roots: [RootSpec] = [RootSpec(base: .home, components: ["Library", "Caches"])]
     ) -> Rule {
         Rule(
             id: "test.rule",
             category: .caches,
             tier: tier,
-            roots: [RootSpec(base: .home, components: ["Library", "Caches"])],
+            roots: roots,
             match: .children,
             guards: guards,
             access: .user,
@@ -56,7 +57,8 @@ struct GateHarness {
         exclusions: [URL] = [],
         apps: any RunningAppsProvider = FakeApps(),
         files: any OpenFilesProvider = FakeFiles(answer: false),
-        allowWholeBundle: Bool = false
+        allowWholeBundle: Bool = false,
+        rootOwners: [URL: [OwnerSpec]] = [:]
     ) -> GateContext {
         GateContext(
             environment: environment,
@@ -64,7 +66,8 @@ struct GateHarness {
             expandedRoots: roots ?? [caches],
             runningApps: apps,
             openFiles: files,
-            allowWholeBundle: allowWholeBundle
+            allowWholeBundle: allowWholeBundle,
+            rootOwners: rootOwners
         )
     }
 

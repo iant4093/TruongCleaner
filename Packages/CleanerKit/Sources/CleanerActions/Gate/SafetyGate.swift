@@ -17,6 +17,11 @@ public struct SafetyGate: Sendable {
         "qlgenerator", "prefpane", "saver", "mdimporter", "driver",
     ]
 
+    /// Paths inside a folder that make it a real bundle (any one is enough).
+    private static let bundleMarkers: [[String]] = [
+        ["Contents", "Info.plist"], ["Info.plist"], ["Contents", "_CodeSignature"],
+    ]
+
     /// Longest the age check may spend walking a folder.
     private static let ageWalkLimit: Duration = .seconds(5)
 
@@ -33,11 +38,12 @@ public struct SafetyGate: Sendable {
     /// 5. Not a root.
     /// 6. Global protected list.
     /// 7. No symlink between the root and the item.
-    /// 8. Not a code bundle or inside one.
+    /// 8. Not a code bundle or inside one. A folder counts as a bundle only when its extension is
+    ///    a bundle extension and it holds `Contents/Info.plist`, `Info.plist` or `Contents/_CodeSignature`.
     /// 9. Exists, and no `SF_RESTRICTED`, `SF_NOUNLINK`, immutable or append-only flag.
     /// 10. `(fsid, fileID)` unchanged since the scan.
     /// 11. `minAge`, then `keepNewest`.
-    /// 12. Owners not running.
+    /// 12. Owners not running: the rule's owners plus the owners of the root the item lies under.
     /// 13. No process has a file open inside.
     ///
     /// - Parameters:
@@ -77,8 +83,13 @@ public struct SafetyGate: Sendable {
         if protected == .userExcluded { return .userExcluded }
 
         // 4. Inside a root, by real path, and (when the path has no `..`) by the path as scanned.
-        let realRoots = context.expandedRoots.compactMap { try? GateSystem.realPath(of: $0) }
-        let given4 = givenPath(given, roots: context.expandedRoots + realRoots)
+        // A root that `excludeRootSegments` leaves out is not one of the rule's roots.
+        let roots = context.expandedRoots.filter { !rule.excludesRoot($0) }
+        let rootPairs = roots.compactMap { root in
+            (try? GateSystem.realPath(of: root)).map { RootPair(expanded: root, real: $0) }
+        }
+        let realRoots = rootPairs.map(\.real)
+        let given4 = givenPath(given, roots: roots + realRoots)
         guard context.policy.isInside(item, roots: realRoots) else {
             if let given4, (try? hasSymlink(below: given4)) == true { return .symlinkAncestor }
             return .outsideRoots
@@ -95,7 +106,7 @@ public struct SafetyGate: Sendable {
         if let given4, try hasSymlink(below: given4) { return .symlinkAncestor }
 
         // 8. No bundle edits.
-        if touchesBundle(item, allowWholeBundle: context.allowWholeBundle) { return .insideBundle }
+        if try touchesBundle(item, allowWholeBundle: context.allowWholeBundle) { return .insideBundle }
 
         // 9. Exists, and macOS allows removing it.
         let info = try GateSystem.lstatInfo(of: item)
@@ -121,15 +132,19 @@ public struct SafetyGate: Sendable {
         }
 
         // 12. Owners are closed. Unknown means keep.
-        for owner in rule.guards.owners {
-            switch Self.resolve(owner, item: item, realRoots: realRoots) {
+        let root = OwnerResolution.deepestRoot(containing: item, in: realRoots)
+        guard let owners = Self.effectiveOwners(rule: rule, root: root, pairs: rootPairs, context: context) else {
+            return .ownerUnknown
+        }
+        for owner in owners {
+            switch OwnerResolution.target(for: owner, item: item, root: root, rootSpecs: rule.roots) {
             case .noOwner:
                 continue
             case .unresolvable:
                 return .ownerUnknown
-            case .ask(let spec, let label):
+            case .ask(let spec):
                 switch await context.runningApps.state(of: spec, for: item) {
-                case .running: return .ownerOpen(label)
+                case .running: return .ownerOpen(Self.label(for: spec))
                 case .unknown: return .ownerUnknown
                 case .notRunning: break
                 }
@@ -174,13 +189,38 @@ public struct SafetyGate: Sendable {
 
     /// Whether the item, or any folder above it, is a code bundle. The one exception is the item
     /// itself being a `.app` when the rule allows whole-bundle removal.
-    private func touchesBundle(_ item: URL, allowWholeBundle: Bool) -> Bool {
+    ///
+    /// A name with a bundle extension is not enough: a cache folder called `com.example.App` is just
+    /// a folder. It counts only when it is a real folder (not a link) that holds a bundle marker.
+    /// A marker that cannot be read throws, so the item is kept.
+    private func touchesBundle(_ item: URL, allowWholeBundle: Bool) throws -> Bool {
         guard let parts = PathParts.components(of: item) else { return true }
         for (index, part) in parts.enumerated() {
             let ext = PathParts.fold((part as NSString).pathExtension)
             guard Self.bundleExtensions.contains(ext) else { continue }
             if index == parts.count - 1, allowWholeBundle, ext == "app" { continue }
-            return true
+            if try isRealBundle(PathParts.url(from: parts.prefix(index + 1))) { return true }
+        }
+        return false
+    }
+
+    /// Whether `folder` is a folder holding `Contents/Info.plist`, `Info.plist` or `Contents/_CodeSignature`.
+    /// A path that does not exist is not a bundle.
+    private func isRealBundle(_ folder: URL) throws -> Bool {
+        do {
+            guard GateSystem.isDirectory(try GateSystem.lstatInfo(of: folder)) else { return false }
+        } catch let error as SysError where error.isMissing {
+            return false
+        }
+        for marker in Self.bundleMarkers {
+            var url = folder
+            for component in marker { url.append(path: component, directoryHint: .inferFromPath) }
+            do {
+                _ = try GateSystem.lstatInfo(of: url)
+                return true
+            } catch let error as SysError where error.isMissing {
+                continue
+            }
         }
         return false
     }
@@ -211,36 +251,41 @@ public struct SafetyGate: Sendable {
         return newer < keep
     }
 
-    /// What a rule's owner spec means for one item.
-    private enum OwnerLookup {
-        /// Ask the provider about `spec`; `label` is shown if it is running.
-        case ask(spec: OwnerSpec, label: String)
-        /// The spec names no owner for this item.
-        case noOwner
-        /// The owner cannot be worked out, so the item is kept.
-        case unresolvable
+    /// The owners to check for an item: the rule's own, then those of the root it lies under
+    /// (from the rule's root specs and from `context.rootOwners`), without duplicates.
+    ///
+    /// - Returns: nil when the item's root cannot be found but some root carries owners. Those
+    ///   owners cannot be applied, so the caller keeps the item.
+    private static func effectiveOwners(
+        rule: Rule, root: URL?, pairs: [RootPair], context: GateContext
+    ) -> [OwnerSpec]? {
+        var owners = rule.guards.owners
+        guard let root else {
+            let needed = !context.rootOwners.isEmpty || rule.roots.contains { !$0.owners.isEmpty }
+            return needed ? nil : owners
+        }
+        let wanted = Set(
+            [root] + pairs.filter { key($0.real) == key(root) }.map(\.expanded)
+        ).compactMap(key)
+        var rootLevel = rule.rootOwners(for: root)
+        for (url, list) in context.rootOwners {
+            if let name = key(url), wanted.contains(name) { rootLevel += list }
+        }
+        for owner in rootLevel where !owners.contains(owner) { owners.append(owner) }
+        return owners
     }
 
-    /// Turns an owner spec into something a provider can answer.
-    /// `childNameAsBundleID` becomes `.bundleID` of the item's top-level folder below its root.
-    private static func resolve(_ owner: OwnerSpec, item: URL, realRoots: [URL]) -> OwnerLookup {
+    /// Case-insensitive identity of a folder path, for comparing roots.
+    private static func key(_ url: URL) -> String? {
+        PathParts.components(of: url)?.map(PathParts.fold).joined(separator: "/")
+    }
+
+    /// The name to show when an owner is running.
+    private static func label(for owner: OwnerSpec) -> String {
         switch owner {
-        case .bundleID(let id):
-            return .ask(spec: owner, label: id)
-        case .processName(let name):
-            return .ask(spec: owner, label: name)
-        case .childNameAsBundleID:
-            guard let itemParts = PathParts.components(of: item) else { return .unresolvable }
-            for root in realRoots {
-                guard let rootParts = PathParts.components(of: root), itemParts.count > rootParts.count,
-                    itemParts.starts(with: rootParts)
-                else { continue }
-                let child = itemParts[rootParts.count]
-                let pieces = child.split(separator: ".", omittingEmptySubsequences: false)
-                guard pieces.count >= 3, !pieces.contains(where: \.isEmpty) else { return .noOwner }
-                return .ask(spec: .bundleID(child), label: child)
-            }
-            return .unresolvable
+        case .bundleID(let id): id
+        case .processName(let name): name
+        case .childNameAsBundleID, .rootSegmentAsBundleID: "its app"
         }
     }
 
@@ -258,6 +303,12 @@ public struct SafetyGate: Sendable {
         let parts = duration.components
         return TimeInterval(parts.seconds) + TimeInterval(parts.attoseconds) * 1e-18
     }
+}
+
+/// A rule root as scanned, with its real path.
+private struct RootPair {
+    let expanded: URL
+    let real: URL
 }
 
 /// A path as the finding gave it, split at the rule root it lies under.
