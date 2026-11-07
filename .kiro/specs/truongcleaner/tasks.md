@@ -42,7 +42,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 2.4 | B | | `ScanEngine` + `Matcher` (needs 2.1, 2.3) | SCAN-01, SCAN-08, RULE-03, RULE-04 |
 | [x] | 2.5 | B | | Overview page: storage bar (Charts), details, recommendations placeholder | SYS-01, SYS-03, UI-02 |
 | [x] | 2.4b | B | | Nested rule overlaps (`coveredByOtherRule`) and pruned project walks | SCAN-07 |
-| [ ] | 2.6 | B | | `tcbench` scenarios; numbers into EVIDENCE | PERF-01..05 |
+| [x] | 2.6 | B | | `tcbench` scenarios; numbers into EVIDENCE | PERF-01..05 |
 | [x] | 2.6b | B | | Investigate cancel latency on a 3-core runner (CI saw 3.3 s for a 200 ms budget in `cancellingTheStreamConsumerEndsPromptly`): look for cooperative-pool starvation (semaphore waits in `ReadOnlyCommand`/`OwnerProcess`, `WalkPool` condition waits) and measure with `taskpolicy`/limited cores | SCAN-05 |
 | [ ] | 2.7 | I | | Overview totals vs `df` and System Settings ✋ | — |
 

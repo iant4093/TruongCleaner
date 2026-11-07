@@ -274,3 +274,27 @@ top-level folders count once per folder; purgeable may overlap cached categories
 so "Unexplained" can read slightly low. Merged main: lint 0 violations in 144 files,
 deletion-site PASS, package tests PASS, Debug and Release build (Release 4.1 MB),
 app launches.
+
+### Task 2.6: performance budgets (2026-11-07, M3 Max, 14 cores, macOS 27.0.1)
+
+`scripts/bench.sh` (builder), final run at commit `09a0319`. Another project's
+XCUITest was running on this Mac during the runs (load 3–10), so treat these as
+pessimistic; rerun on a quiet Mac before citing.
+
+| ID | Budget | Measured | Result |
+|---|---|---|---|
+| P1 | launch → first window < 400 ms | median 403 ms (396–609, warm) | borderline |
+| P2 | idle 0% CPU, no background work | launch started a 20–26 s home-folder measurement (120 CPU-s); afterwards 0.23% mean | **fixed** (below) |
+| P3 idle | < 60 MB | 74.3 MB → **52 MB** after the fix (`footprint`, 15 s after launch) | pass after fix |
+| P3 scan | < 250 MB | walker 17.2 MB on the whole Data volume (3.12 M files); app peak ~290 MB was launch graphics + the launch measurement | walker pass; app recheck |
+| P4 | Smart Clean scan < 5 s | 9.25 s median; `user.caches` alone 9.15 s because `~/Library/Caches` holds 1.01 M files / 172 GB on this Mac | fail on this data set |
+| P5 | ≥ `du` throughput | 118,570 vs 31,487 files/s on `~/Library` (3.8×) | pass |
+| P6 | bundle < 5 MB | 4.08 MB; ZIP 2.55 MB, DMG 2.98 MB | pass |
+| P7 | no main-thread stall > 16 ms | main thread busy 0 ms of 4 s sampled during Smart Clean and Space Lens scans | pass |
+
+Orchestrator fix after the review: the Overview no longer starts the category
+measurement on its own (it violated "no background work"). A "Break Down Data"
+button starts it; opening System Data still does. P4 needs a design change for
+very large cache folders (size `~/Library/Caches` children with a shallower walk
+and refine in the background, or show results per rule as they arrive), tracked
+as task 2.7.

@@ -108,9 +108,8 @@ final class OverviewModel {
             snapshots: summary,
             swap: swapResult
         ))
-        // The volume numbers are on screen; now split Data into categories. Skipped while a result under
-        // ten minutes old exists.
-        categories.startIfNeeded()
+        // The category breakdown is a ~20 s walk of the home folder, so it starts only when the user asks
+        // (Overview "Break Down" button, or opening System Data). product.md: no background work on launch.
     }
 
     @concurrent
