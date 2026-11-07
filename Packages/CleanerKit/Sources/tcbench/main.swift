@@ -1,5 +1,4 @@
 // Dev-only benchmark tool. Not part of the app.
-// Further scenarios arrive in task 2.6.
 import CleanerCore
 import CleanerScanner
 import Darwin
@@ -15,6 +14,8 @@ scenarios:
       Print volume capacity, snapshots, swap and simulator counts (read-only).
   categories <home> [--no-system]
       Measure the Data volume's categories (apps, documents, caches, developer, ...) and print them (read-only).
+  smartclean <home>
+      Scan every rule the Smart Clean page offers through ScanEngine against <home> and print totals and timing (read-only).
   walk <root> [--workers n] [--depth d]
       Walk <root> with BulkWalker and print a summary (no per-file output).
       --workers n   worker threads, 1...8 (default: min(8, cores))
@@ -114,6 +115,8 @@ case "categories":
     await CategoriesCommand.run(Array(arguments.dropFirst()))
 case "scan-demo":
     await ScanDemoCommand.run(Array(arguments.dropFirst()))
+case "smartclean":
+    await SmartCleanCommand.run(Array(arguments.dropFirst()))
 case nil, "-h", "--help", "help":
     print(usage)
 default:
