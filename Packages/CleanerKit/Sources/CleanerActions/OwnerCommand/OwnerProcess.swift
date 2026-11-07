@@ -1,6 +1,6 @@
+import CleanerScanner
 import Darwin
 import Foundation
-import Synchronization
 
 /// How a launched owner command ended. Internal; ``OwnerCommandRunner`` turns it into an ``OwnerCommandResult``.
 struct OwnerProcessOutcome: Sendable {
@@ -13,7 +13,7 @@ struct OwnerProcessOutcome: Sendable {
     var tail: Data
 }
 
-/// Blocking process launch with the strictness of `safety.md` rule 14.
+/// Process launch with the strictness of `safety.md` rule 14.
 ///
 /// No shell, stdin from `/dev/null`, a given environment, a timeout (terminate, then kill after
 /// 5 s) and both output streams read at once into one bounded buffer.
@@ -21,7 +21,7 @@ enum OwnerProcess {
     /// Output kept for the result.
     static let tailLimit = 4096
     /// How long a terminated process may take to exit before it is killed.
-    static let killGrace: DispatchTimeInterval = .seconds(5)
+    static let killGrace: Duration = .seconds(5)
 
     /// Result of checking a candidate path.
     enum ExecutableCheck: Equatable {
@@ -63,19 +63,21 @@ enum OwnerProcess {
         return environment
     }
 
-    /// Launches `executable` on a dispatch thread (never the cooperative pool or the main actor).
+    /// Launches `executable` and awaits it. No thread is held while it runs
+    /// (see ``SupervisedProcess``), so many owner commands cost no more threads than one.
     @concurrent
     static func run(
         _ executable: String, _ arguments: [String], timeout: Duration
     ) async -> OwnerProcessOutcome {
-        let environment = environment(executable: executable)
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: runBlocking(
-                    executable, arguments, timeout: timeout, environment: environment
-                ))
-            }
-        }
+        let outcome = await SupervisedProcess.run(
+            executable, arguments, environment: environment(executable: executable),
+            timeout: timeout, terminateGrace: killGrace, mergeOutput: true, keepLast: tailLimit)
+        return OwnerProcessOutcome(
+            exitCode: outcome.exitedNormally ? outcome.terminationStatus : nil,
+            timedOut: outcome.timedOut,
+            launchError: outcome.launchError,
+            tail: outcome.launchError == nil ? outcome.stdout : Data()
+        )
     }
 
     /// The last bytes of the output as text. The cut moves forward to the next UTF-8 character start,
@@ -86,94 +88,5 @@ enum OwnerProcess {
             bytes = bytes.dropFirst()
         }
         return String(decoding: bytes, as: UTF8.self)
-    }
-
-    /// Keeps only the newest bytes of a stream.
-    private final class TailBuffer: Sendable {
-        private let storage = Mutex<Data>(Data())
-
-        func append(_ chunk: Data) {
-            storage.withLock { data in
-                data.append(chunk)
-                if data.count > tailLimit * 2 {
-                    data = Data(data.suffix(tailLimit))
-                }
-            }
-        }
-
-        var data: Data { storage.withLock { $0 } }
-    }
-
-    private static func runBlocking(
-        _ executable: String,
-        _ arguments: [String],
-        timeout: Duration,
-        environment: [String: String]
-    ) -> OwnerProcessOutcome {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = environment
-        process.standardInput = FileHandle.nullDevice
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        let exited = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in exited.signal() }
-
-        do {
-            try process.run()
-        } catch {
-            return OwnerProcessOutcome(
-                exitCode: nil, timedOut: false, launchError: error.localizedDescription, tail: Data()
-            )
-        }
-
-        let buffer = TailBuffer()
-        let reader = DispatchGroup()
-        let descriptor = pipe.fileHandleForReading.fileDescriptor
-        reader.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
-            var chunk = [UInt8](repeating: 0, count: 16 * 1024)
-            while true {
-                let count = read(descriptor, &chunk, chunk.count)
-                if count > 0 {
-                    buffer.append(Data(chunk[0..<count]))
-                } else if count < 0 && errno == EINTR {
-                    continue
-                } else {
-                    break
-                }
-            }
-            reader.leave()
-        }
-
-        var timedOut = false
-        if exited.wait(timeout: .now() + dispatchInterval(timeout)) == .timedOut {
-            timedOut = true
-            process.terminate()
-            if exited.wait(timeout: .now() + killGrace) == .timedOut {
-                kill(process.processIdentifier, SIGKILL)
-                _ = exited.wait(timeout: .now() + .seconds(2))
-            }
-        }
-        // A grandchild that kept the pipe open must not hold us up for long.
-        _ = reader.wait(timeout: .now() + .seconds(5))
-
-        let exitedNormally = !process.isRunning && process.terminationReason == .exit
-        return OwnerProcessOutcome(
-            exitCode: exitedNormally ? process.terminationStatus : nil,
-            timedOut: timedOut,
-            launchError: nil,
-            tail: buffer.data
-        )
-    }
-
-    private static func dispatchInterval(_ duration: Duration) -> DispatchTimeInterval {
-        let parts = duration.components
-        let nanoseconds = Double(parts.seconds) * 1e9 + Double(parts.attoseconds) / 1e9
-        guard nanoseconds > 0 else { return .nanoseconds(0) }
-        return .nanoseconds(Int(min(nanoseconds, Double(Int.max / 2))))
     }
 }

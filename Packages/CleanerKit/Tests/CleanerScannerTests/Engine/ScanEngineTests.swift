@@ -5,6 +5,24 @@ import Synchronization
 import Testing
 @testable import CleanerScanner
 
+/// Runs file-system setup that takes a while (thousands of files) on a dispatch thread of its own.
+/// Left on the cooperative pool it holds one of the few threads (three on a small CI runner) while
+/// the timing tests in the same run wait for a free one.
+private func offPool(_ setup: @escaping @Sendable () throws -> Void) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        setupQueue.async {
+            do {
+                try setup()
+                continuation.resume()
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+}
+
+private let setupQueue = DispatchQueue(label: "TruongCleaner.TestSetup", qos: .userInitiated)
+
 /// Engine tests. Every tree is a fixture under `build/test-fixtures/`; nothing reads the real home folder.
 struct ScanEngineTests {
     private let week = Duration.seconds(7 * 86_400)
@@ -468,8 +486,11 @@ struct ScanEngineTests {
     func cancellingStopsTheWalkAndMarksTheReportPartial() async throws {
         let fixture = try EngineFixture()
         defer { fixture.remove() }
-        for index in 0..<20 {
-            try fixture.tree.addEmptyFiles(in: "home/Library/Caches/dir\(index)", count: 1_000)
+        let tree = fixture.tree
+        try await offPool {
+            for index in 0..<20 {
+                try tree.addEmptyFiles(in: "home/Library/Caches/dir\(index)", count: 1_000)
+            }
         }
 
         let request = ScanRequest(
@@ -504,8 +525,11 @@ struct ScanEngineTests {
     func cancellingTheStreamConsumerEndsPromptly() async throws {
         let fixture = try EngineFixture()
         defer { fixture.remove() }
-        for index in 0..<4 {
-            try fixture.tree.addEmptyFiles(in: "home/Library/Caches/dir\(index)", count: 500)
+        let tree = fixture.tree
+        try await offPool {
+            for index in 0..<4 {
+                try tree.addEmptyFiles(in: "home/Library/Caches/dir\(index)", count: 500)
+            }
         }
         let request = ScanRequest(
             rules: [makeRule("test.big", roots: [["Library", "Caches"]])], environment: fixture.environment)

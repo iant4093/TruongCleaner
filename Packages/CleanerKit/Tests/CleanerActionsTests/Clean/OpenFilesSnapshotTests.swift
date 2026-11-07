@@ -108,4 +108,48 @@ struct OpenFilesSnapshotTests {
         // 200 questions to the old provider would take about 24 s. Allow a generous 2 s.
         #expect(elapsed < .seconds(2))
     }
+
+    // MARK: ProcessInspector self-checks
+
+    @Test func inspector_aSnapshotThatReachedTooFewProcessesIsUnknown() async throws {
+        let tree = try FixtureTree()
+        defer { tree.remove() }
+        let file = try tree.addFile("a.bin", size: 1)
+        // Process 1 (launchd) belongs to root: an ordinary user cannot read it, so nothing was seen.
+        let snapshot = ProcessInspector.capture(excluding: [], listProcesses: { [1] })
+        #expect(await snapshot.hasOpenFiles(under: file) == nil)
+    }
+
+    @Test func inspector_noProcessListIsUnknown() async throws {
+        let tree = try FixtureTree()
+        defer { tree.remove() }
+        let file = try tree.addFile("a.bin", size: 1)
+        #expect(await ProcessInspector.capture(excluding: [], listProcesses: { nil }).hasOpenFiles(under: file) == nil)
+        #expect(await ProcessInspector.capture(excluding: [], listProcesses: { [] }).hasOpenFiles(under: file) == nil)
+    }
+
+    @Test func inspector_readableProcessesGiveADefiniteAnswer() async throws {
+        let tree = try FixtureTree()
+        defer { tree.remove() }
+        let file = try tree.addFile("a.bin", size: 1)
+        let me = getpid()
+        let snapshot = ProcessInspector.capture(excluding: [], listProcesses: { [me] })
+        #expect(await snapshot.hasOpenFiles(under: file) == false)
+        let descriptor = try openReadOnly(file)
+        defer { close(descriptor) }
+        #expect(await ProcessInspector.capture(excluding: [], listProcesses: { [me] }).hasOpenFiles(under: file) == true)
+    }
+
+    @Test func inspector_aFolderQueryAndAFileQueryComeFromTheSameSnapshot() async throws {
+        let tree = try FixtureTree()
+        defer { tree.remove() }
+        let file = try tree.addFile("logs/deep/held.log", size: 1)
+        let descriptor = try openReadOnly(file)
+        defer { close(descriptor) }
+        let snapshot = await OpenFilesSnapshot.take(excludingPIDs: [])
+        // One snapshot answers for the file and every folder above it alike.
+        for url in [file, tree.url(for: "logs/deep"), tree.url(for: "logs")] {
+            #expect(await snapshot.hasOpenFiles(under: url) == true)
+        }
+    }
 }

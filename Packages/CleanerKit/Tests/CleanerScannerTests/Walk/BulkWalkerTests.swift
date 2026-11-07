@@ -5,6 +5,24 @@ import Synchronization
 import Testing
 @testable import CleanerScanner
 
+/// Runs file-system setup that takes a while (thousands of files) on a dispatch thread of its own.
+/// Left on the cooperative pool it holds one of the few threads (three on a small CI runner) while
+/// the timing tests in the same run wait for a free one.
+private func offPool(_ setup: @escaping @Sendable () throws -> Void) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        setupQueue.async {
+            do {
+                try setup()
+                continuation.resume()
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+}
+
+private let setupQueue = DispatchQueue(label: "TruongCleaner.TestSetup", qos: .userInitiated)
+
 /// Walker tests. Every tree is a fixture under `build/test-fixtures/`; nothing reads the real home folder.
 struct BulkWalkerTests {
     /// APFS allocates in 4 KB units, so sizes that are multiples of this have exact expected values.
@@ -289,8 +307,10 @@ struct BulkWalkerTests {
     @Test func cancellationReturnsAPartialResultQuickly() async throws {
         let tree = try FixtureTree()
         defer { tree.remove() }
-        for folder in 0..<200 {
-            try tree.addEmptyFiles(in: "d\(folder)", count: 100)
+        try await offPool {
+            for folder in 0..<200 {
+                try tree.addEmptyFiles(in: "d\(folder)", count: 100)
+            }
         }
 
         // The first progress callback holds the single worker until the test has cancelled the task,

@@ -42,6 +42,7 @@ private struct AttachedImage {
     }
 
     /// Runs `hdiutil` without blocking a thread: output goes to a file and the exit is awaited.
+    /// A call that has not ended after 90 s is terminated, so a stuck disk image cannot hang the run.
     private static func hdiutil(_ arguments: [String], log: URL) async throws -> Data {
         guard FileManager.default.createFile(atPath: log.path, contents: nil) else {
             throw Unavailable(description: "cannot create log")
@@ -54,6 +55,11 @@ private struct AttachedImage {
         process.standardOutput = sink
         process.standardError = sink
         process.standardInput = FileHandle.nullDevice
+        let watchdog = Task {
+            try await Task.sleep(for: .seconds(90))
+            if process.isRunning { process.terminate() }
+        }
+        defer { watchdog.cancel() }
         let status: Int32 = try await withCheckedThrowingContinuation { continuation in
             process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
             do { try process.run() } catch { continuation.resume(throwing: error) }
