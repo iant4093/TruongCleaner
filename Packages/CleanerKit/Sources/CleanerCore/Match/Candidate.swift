@@ -83,4 +83,7 @@ public enum SkipReason: String, Sendable, Codable {
     case missingSibling
     /// An Info rule never offers anything to delete.
     case infoRule
+    /// The item holds or equals a root that a different, more specific rule in the same scan walks.
+    /// That rule offers the contents, so this rule does not offer them a second time.
+    case coveredByOtherRule
 }

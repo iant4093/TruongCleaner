@@ -48,7 +48,7 @@ public struct ProcessNameOwnerProvider: RunningAppsProvider {
 
     /// Whether any process is named exactly `name`. `.unknown` when the process list cannot be read.
     static func isProcessRunning(named name: String) -> OwnerState {
-        guard !name.isEmpty, let pids = ProcessOpenFilesProvider.allPIDs() else { return .unknown }
+        guard !name.isEmpty, let pids = ProcessInspector.allPIDs() else { return .unknown }
         for pid in pids where pid > 0 {
             var shortName = [CChar](repeating: 0, count: 256)
             if proc_name(pid, &shortName, UInt32(shortName.count)) > 0, Self.text(shortName) == name {

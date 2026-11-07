@@ -201,7 +201,9 @@ struct OwnerCommandRunnerTests {
         defer { tree.remove() }
         let tool = try FakeTool.make(in: tree, folder: "bin", name: "go", sleeps: true)
         let runner = Support.runner([
-            Support.definition(.goCleanCache, candidates: [tool.path], arguments: ["clean"], timeout: .milliseconds(400)),
+            // The script must reach its first log line before the timeout; 400 ms was too tight when
+            // the whole suite runs at once and the shell starts slowly.
+            Support.definition(.goCleanCache, candidates: [tool.path], arguments: ["clean"], timeout: .milliseconds(1500)),
         ])
 
         let result = await runner.run(.goCleanCache)

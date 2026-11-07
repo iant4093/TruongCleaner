@@ -97,7 +97,8 @@ private final class WalkRun: Sendable {
             queue: queue, links: HardLinkSet(), nodes: nodes, denied: DeniedList(), stop: stop,
             progress: ProgressReporter(interval: options.progressInterval, callback: progress),
             rootFSID: rootFSID, totalsDepth: max(0, options.totalsDepth),
-            topFilesCapacity: max(0, options.topFilesCount), handoffLimit: workers > 1 ? workers : 0)
+            topFilesCapacity: max(0, options.topFilesCount), handoffLimit: workers > 1 ? workers : 0,
+            prune: PrunePlan(options))
         return WalkRun(root: root, context: context, workers: workers)
     }
 

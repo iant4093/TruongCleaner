@@ -13,6 +13,8 @@ struct WalkJob: Sendable {
     var depth: Int
     /// Kept node that receives this directory's totals (itself when kept, else its nearest kept ancestor).
     var keptNode: Int
+    /// Whether this directory is, or lies below, a pruned folder (`WalkOptions.pruneNames`).
+    var prune: PruneState = .none
 }
 
 /// Queue of open directories shared by the workers.

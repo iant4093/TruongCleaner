@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 
 /// The outcome of one read-only command.
 public struct CommandResult: Sendable {
@@ -82,13 +81,19 @@ public struct ReadOnlyCommand: Sendable {
             return refused("executable path must be absolute")
         }
         let environment = scrubbedEnvironment(parent: ProcessInfo.processInfo.environment)
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: runBlocking(
-                    executable, arguments, timeout: timeout, environment: environment
-                ))
-            }
-        }
+        let clock = ContinuousClock()
+        let started = clock.now
+        let outcome = await SupervisedProcess.run(
+            executable, arguments, environment: environment, timeout: timeout,
+            terminateGrace: .seconds(2), mergeOutput: false)
+        return CommandResult(
+            exitCode: outcome.terminationStatus,
+            timedOut: outcome.timedOut,
+            launchError: outcome.launchError,
+            stdout: outcome.stdout,
+            stderr: outcome.stderr,
+            duration: started.duration(to: clock.now)
+        )
     }
 
     /// The environment every command gets. `DEVELOPER_DIR` is passed only when the parent has it.
@@ -109,85 +114,6 @@ public struct ReadOnlyCommand: Sendable {
             exitCode: nil, timedOut: false, launchError: refusedPrefix + reason,
             stdout: Data(), stderr: Data(), duration: .zero
         )
-    }
-
-    /// Collects one pipe's output on a background thread.
-    private final class PipeBuffer: Sendable {
-        private let storage = Mutex<Data>(Data())
-        func set(_ data: Data) { storage.withLock { $0 = data } }
-        var data: Data { storage.withLock { $0 } }
-    }
-
-    /// Blocking implementation. Runs on a dispatch thread, never on the cooperative pool or the main actor.
-    private static func runBlocking(
-        _ executable: String,
-        _ arguments: [String],
-        timeout: Duration,
-        environment: [String: String]
-    ) -> CommandResult {
-        let clock = ContinuousClock()
-        let started = clock.now
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = environment
-        process.standardInput = FileHandle.nullDevice
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = errPipe
-
-        let exited = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in exited.signal() }
-
-        do {
-            try process.run()
-        } catch {
-            return CommandResult(
-                exitCode: nil, timedOut: false, launchError: error.localizedDescription,
-                stdout: Data(), stderr: Data(), duration: started.duration(to: clock.now)
-            )
-        }
-
-        // Read both pipes at once so a large output cannot fill a pipe and stall the child.
-        let outBuffer = PipeBuffer()
-        let errBuffer = PipeBuffer()
-        let readers = DispatchGroup()
-        for (handle, buffer) in [(outPipe.fileHandleForReading, outBuffer), (errPipe.fileHandleForReading, errBuffer)] {
-            readers.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
-                buffer.set((try? handle.readToEnd()) ?? Data())
-                readers.leave()
-            }
-        }
-
-        var timedOut = false
-        if exited.wait(timeout: .now() + dispatchInterval(timeout)) == .timedOut {
-            timedOut = true
-            process.terminate()
-            if exited.wait(timeout: .now() + .seconds(2)) == .timedOut {
-                kill(process.processIdentifier, SIGKILL)
-                _ = exited.wait(timeout: .now() + .seconds(2))
-            }
-        }
-        _ = readers.wait(timeout: .now() + .seconds(5))
-
-        return CommandResult(
-            exitCode: process.isRunning ? nil : process.terminationStatus,
-            timedOut: timedOut,
-            launchError: nil,
-            stdout: outBuffer.data,
-            stderr: errBuffer.data,
-            duration: started.duration(to: clock.now)
-        )
-    }
-
-    private static func dispatchInterval(_ duration: Duration) -> DispatchTimeInterval {
-        let parts = duration.components
-        let nanoseconds = Double(parts.seconds) * 1e9 + Double(parts.attoseconds) / 1e9
-        guard nanoseconds > 0 else { return .nanoseconds(0) }
-        return .nanoseconds(Int(min(nanoseconds, Double(Int.max / 2))))
     }
 }
 

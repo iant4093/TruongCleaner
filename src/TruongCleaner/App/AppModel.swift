@@ -11,10 +11,23 @@ final class AppModel {
     /// Data for the Overview page.
     let overview = OverviewModel()
 
+    /// Data for the System Data page.
+    let systemData = SystemDataModel()
+
     /// Data for the Large & Old Files page.
     let largeFiles = LargeFilesModel()
     /// Data for the Space Lens page.
     let spaceLens = SpaceLensModel()
+    /// Data for the Smart Clean page.
+    let smartClean: SmartCleanModel
+
+    /// Data for the Trash page.
+    let trash: TrashModel
+    /// Data for the History page.
+    let cleanHistory: HistoryModel
+
+    /// Objects shared by pages that clean or read history, such as the one `HistoryStore`.
+    let services: Services
 
     /// Delete mode, exclusions, disabled rules and the update switch.
     let settings: SettingsStore
@@ -30,6 +43,36 @@ final class AppModel {
         let settings = SettingsStore()
         self.settings = settings
         self.updates = UpdateChecker(settings: settings)
+        let services = Services()
+        self.services = services
+        self.smartClean = SmartCleanModel(settings: settings, services: services)
+        self.trash = TrashModel(services: services, settings: settings)
+        self.cleanHistory = HistoryModel(services: services)
+    }
+
+    /// What the toolbar's Scan button (⌘R) does on the current page.
+    struct ToolbarScan {
+        /// True while the page's scan runs; the button then stops it.
+        let isRunning: Bool
+        /// False when the page cannot scan or stop right now.
+        let isEnabled: Bool
+        /// Starts or stops the scan.
+        let perform: () -> Void
+    }
+
+    /// The toolbar Scan button for the selected page, or `nil` when the page has no scan to start.
+    var toolbarScan: ToolbarScan? {
+        switch selection {
+        case .smartClean:
+            let model = smartClean
+            return ToolbarScan(
+                isRunning: model.isScanning,
+                isEnabled: model.isScanning || model.canScan,
+                perform: { model.isScanning ? model.stopScan() : model.scan() }
+            )
+        default:
+            return nil
+        }
     }
 
     /// Probes Full Disk Access off the main actor and publishes the answer in ``access``.

@@ -51,6 +51,8 @@ struct WalkContext: Sendable {
     let topFilesCapacity: Int
     /// 0 disables hand-off (single worker).
     let handoffLimit: Int
+    /// Folder names whose subtree is totaled as one node.
+    let prune: PrunePlan
 }
 
 /// A directory being walked depth-first. `names` holds its subdirectory names, NUL terminated.
@@ -59,6 +61,7 @@ private struct Frame {
     let path: [CChar]
     let depth: Int
     let keptNode: Int
+    let prune: PruneState
     var totals = Totals()
     var names: [CChar] = []
     var directories: [PendingDirectory] = []
@@ -167,7 +170,9 @@ struct DirectoryWalker {
 
     /// Depth-first walk from `job` (takes ownership of its descriptor and of every descriptor it opens).
     private mutating func walk(_ job: WalkJob) {
-        var stack = [Frame(fd: job.fd, path: job.path, depth: job.depth, keptNode: job.keptNode)]
+        var stack = [
+            Frame(fd: job.fd, path: job.path, depth: job.depth, keptNode: job.keptNode, prune: job.prune)
+        ]
         readDirectory(&stack[0])
         while !stack.isEmpty {
             if context.stop.check() {
@@ -210,6 +215,15 @@ struct DirectoryWalker {
             close(parent.fd)
             parent.fd = -1
         }
+        let parentPrune = parent.prune
+        let (childPrune, keepsNode) = parent.names.withUnsafeBufferPointer { names -> (PruneState, Bool) in
+            guard let base = names.baseAddress else { return (parentPrune == .none ? .none : .inside, true) }
+            let name = base + pending.nameOffset
+            return (
+                context.prune.state(ofChildNamed: name, parent: parentPrune),
+                context.prune.keepsNode(childNamed: name, parent: parentPrune)
+            )
+        }
         let path = parent.names.withUnsafeBufferPointer { names -> [CChar] in
             guard let base = names.baseAddress else { return parent.path }
             return appendComponent(to: parent.path, name: base + pending.nameOffset, maxLength: names.count - pending.nameOffset)
@@ -219,7 +233,7 @@ struct DirectoryWalker {
             if openError == EPERM || openError == EACCES {
                 // The folder exists but is closed to us: its size is unknown, not zero.
                 context.denied.record { makeURL(fromPath: path, isDirectory: true) }
-                _ = register(pending, path: path, parent: &parent)
+                _ = register(pending, path: path, parent: &parent, keepsNode: keepsNode)
             } else {
                 counters.otherErrors += 1
             }
@@ -237,21 +251,25 @@ struct DirectoryWalker {
             close(childFD)
             return nil
         }
-        let keptNode = register(pending, path: path, parent: &parent)
-        let job = WalkJob(fd: childFD, path: path, depth: parent.depth + 1, keptNode: keptNode)
+        let keptNode = register(pending, path: path, parent: &parent, keepsNode: keepsNode)
+        let job = WalkJob(fd: childFD, path: path, depth: parent.depth + 1, keptNode: keptNode, prune: childPrune)
         if context.handoffLimit > 0, context.queue.pushIfBelow(job, limit: context.handoffLimit) {
             return nil
         }
-        var frame = Frame(fd: job.fd, path: job.path, depth: job.depth, keptNode: job.keptNode)
+        var frame = Frame(
+            fd: job.fd, path: job.path, depth: job.depth, keptNode: job.keptNode, prune: job.prune)
         readDirectory(&frame)
         return frame
     }
 
     /// Counts a folder and, within `totalsDepth`, gives it a node. Returns the node that receives its totals.
-    private mutating func register(_ pending: PendingDirectory, path: [CChar], parent: inout Frame) -> Int {
+    /// A folder inside a pruned folder (`keepsNode == false`) has no node: its totals go to `parent.keptNode`.
+    private mutating func register(
+        _ pending: PendingDirectory, path: [CChar], parent: inout Frame, keepsNode: Bool
+    ) -> Int {
         counters.directories += 1
         let depth = parent.depth + 1
-        guard depth <= context.totalsDepth else {
+        guard keepsNode, depth <= context.totalsDepth else {
             parent.totals.note(time: pending.modified)
             return parent.keptNode
         }
@@ -290,7 +308,11 @@ struct DirectoryWalker {
             }
             if count == 0 { break }
             var entryStart = 0
-            for _ in 0..<Int(count) {
+            for index in 0..<Int(count) {
+                // A 1,000-entry batch can take ~70 ms (more under load); check for stop every
+                // 64 entries so cancellation lands within budget (EVIDENCE, task 2.6b).
+                // The outer loop's stop check then marks the walk incomplete.
+                if index & 63 == 63, context.stop.check() { break }
                 guard entryStart + 4 <= bulkBufferSize else {
                     counters.otherErrors += 1
                     break
@@ -431,6 +453,7 @@ struct DirectoryWalker {
 
         let depth = frame.depth + 1
         let keepsNode = depth <= context.totalsDepth
+            && context.prune.keepsNode(childNamed: name, parent: frame.prune)
         let entersTop = isRegular && counted && top.wouldAccept(allocated: own.allocated, fileID: id.fileID)
         guard keepsNode || entersTop else {
             frame.totals.merge(own)

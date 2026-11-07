@@ -13,6 +13,21 @@ public struct WalkOptions: Sendable {
     public var limit: Duration?
     /// Smallest time between two progress callbacks.
     public var progressInterval: Duration
+    /// Folder names (compared without regard to ASCII case) that are totaled as one node.
+    ///
+    /// A folder with one of these names still gets its own node when it is within `totalsDepth`, and its
+    /// whole subtree is still walked and counted in it. No node is kept for anything below it, except the
+    /// direct children named in `pruneKeepNames`. Use it for build output such as `node_modules`, where a
+    /// node per entry would use far more memory than the answer is worth.
+    ///
+    /// Names with non-ASCII characters are ignored: the walker compares bytes, and an unmatched name only
+    /// means the folder is not pruned.
+    public var pruneNames: Set<String>
+    /// Names (compared without regard to ASCII case) of direct children of a pruned folder that keep
+    /// their own node, so callers can see whether the folder holds them (for example `.git`).
+    /// A child whose name has non-ASCII characters is always kept, because its name cannot be compared
+    /// safely. Has no effect without `pruneNames`.
+    public var pruneKeepNames: Set<String>
 
     /// Creates walk options.
     public init(
@@ -20,13 +35,17 @@ public struct WalkOptions: Sendable {
         totalsDepth: Int = 1,
         topFilesCount: Int = 0,
         limit: Duration? = nil,
-        progressInterval: Duration = .milliseconds(100)
+        progressInterval: Duration = .milliseconds(100),
+        pruneNames: Set<String> = [],
+        pruneKeepNames: Set<String> = []
     ) {
         self.maxWorkers = maxWorkers
         self.totalsDepth = totalsDepth
         self.topFilesCount = topFilesCount
         self.limit = limit
         self.progressInterval = progressInterval
+        self.pruneNames = pruneNames
+        self.pruneKeepNames = pruneKeepNames
     }
 }
 

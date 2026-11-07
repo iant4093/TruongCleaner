@@ -72,12 +72,19 @@ private struct DetailView: View {
             .navigationTitle(page.title)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {} label: {
-                        Label("Scan", systemImage: "magnifyingglass")
+                    let scan = model.toolbarScan
+                    Button {
+                        scan?.perform()
+                    } label: {
+                        if scan?.isRunning == true {
+                            Label("Stop", systemImage: "stop.fill")
+                        } else {
+                            Label("Scan", systemImage: "magnifyingglass")
+                        }
                     }
                     .buttonStyle(.glassProminent)
                     .keyboardShortcut("r")
-                    .disabled(true)
+                    .disabled(!(scan?.isEnabled ?? false))
                 }
             }
     }
@@ -87,10 +94,18 @@ private struct DetailView: View {
         switch page {
         case .overview:
             OverviewPage(model: model.overview)
+        case .smartClean:
+            SmartCleanPage(model: model.smartClean)
+        case .systemData:
+            SystemDataPage(model: model.systemData)
         case .largeFiles:
             LargeFilesPage(model: model.largeFiles)
         case .spaceLens:
             SpaceLensPage(model: model.spaceLens)
+        case .trash:
+            TrashPage(model: model.trash)
+        case .history:
+            HistoryPage(model: model.cleanHistory)
         default:
             placeholder
         }

@@ -2,13 +2,15 @@ import CleanerCore
 import CleanerTestSupport
 import Darwin
 import Foundation
+import Synchronization
 import Testing
 
 @testable import CleanerActions
 
 /// Runs a child process for the length of a test and ends it afterwards.
-private final class Child {
+private final class Child: Sendable {
     let process = Process()
+    private let state = ExitState()
 
     init(_ executable: String, _ arguments: [String], currentDirectory: URL? = nil) throws {
         process.executableURL = URL(filePath: executable)
@@ -17,13 +19,43 @@ private final class Child {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { [state] _ in state.markExited() }
         try process.run()
     }
 
-    func stop() {
-        if process.isRunning {
-            process.terminate()
-            process.waitUntilExit()
+    /// Ends the child without waiting. Safe in a `defer`.
+    func kill() {
+        if process.isRunning { process.terminate() }
+    }
+
+    /// Ends the child and suspends until it has exited. Never blocks a thread.
+    func stop() async {
+        kill()
+        await state.waitForExit()
+    }
+}
+
+/// Exit state shared with the termination handler, which runs on a dispatch thread.
+private final class ExitState: Sendable {
+    private let storage = Mutex<(exited: Bool, waiters: [CheckedContinuation<Void, Never>])>((false, []))
+
+    func markExited() {
+        let waiters = storage.withLock { value -> [CheckedContinuation<Void, Never>] in
+            value.exited = true
+            defer { value.waiters = [] }
+            return value.waiters
+        }
+        for waiter in waiters { waiter.resume() }
+    }
+
+    func waitForExit() async {
+        await withCheckedContinuation { continuation in
+            let alreadyExited = storage.withLock { value -> Bool in
+                if value.exited { return true }
+                value.waiters.append(continuation)
+                return false
+            }
+            if alreadyExited { continuation.resume() }
         }
     }
 }
@@ -65,7 +97,10 @@ struct LivenessProviderTests {
         }
         #expect(whileOpen)
         close(descriptor)
-        #expect(await provider.hasOpenFiles(under: file) == false)
+        // A test running in parallel may be spawning a child at this moment. Until its exec, the
+        // child holds a copy of every descriptor, so "still open" can be briefly stale. That is the
+        // safe direction; the answer must settle on `false`.
+        #expect(await eventually { await provider.hasOpenFiles(under: file) == false })
     }
 
     @Test func openFiles_hardLinkToAnOpenFileIsFoundByIdentity() async throws {
@@ -95,7 +130,9 @@ struct LivenessProviderTests {
         let file = try tree.addFile("held.bin", size: 10)
         let descriptor = try openReadOnly(file)
         defer { close(descriptor) }
-        #expect(await ProcessOpenFilesProvider().hasOpenFiles(under: file) == false)
+        // Settles on `false` (see the note in the "own handle" test about parallel spawns).
+        let provider = ProcessOpenFilesProvider()
+        #expect(await eventually { await provider.hasOpenFiles(under: file) == false })
     }
 
     @Test func openFiles_anotherProcessHoldingAFileIsSeenForTheFileAndItsFolders() async throws {
@@ -103,7 +140,7 @@ struct LivenessProviderTests {
         defer { tree.remove() }
         let file = try tree.addFile("logs/deep/held.log", size: 10)
         let child = try Child("/usr/bin/tail", ["-f", file.path(percentEncoded: false)])
-        defer { child.stop() }
+        defer { child.kill() }
         let provider = ProcessOpenFilesProvider()
 
         #expect(await eventually { await provider.hasOpenFiles(under: file) == true })
@@ -115,8 +152,35 @@ struct LivenessProviderTests {
         #expect(await provider.hasOpenFiles(under: other) == false)
         #expect(await provider.hasOpenFiles(under: tree.url(for: "other")) == false)
 
-        child.stop()
+        await child.stop()
         #expect(await eventually { await provider.hasOpenFiles(under: file) == false })
+    }
+
+    @Test func openFiles_folderAnswersStayConsistentUnderChurn() async throws {
+        let tree = try FixtureTree()
+        defer { tree.remove() }
+        let file = try tree.addFile("logs/deep/held.log", size: 10)
+        let child = try Child("/usr/bin/tail", ["-f", file.path(percentEncoded: false)])
+        defer { child.kill() }
+        let provider = ProcessOpenFilesProvider()
+        #expect(await eventually { await provider.hasOpenFiles(under: file) == true })
+
+        // 20 short-lived processes start and end while the questions are asked.
+        let churn = Task {
+            for _ in 0..<20 {
+                guard let short = try? Child("/bin/sleep", ["0.05"]) else { continue }
+                await short.stop()
+            }
+        }
+        let questions = [file, tree.url(for: "logs/deep"), tree.url(for: "logs")]
+        var wrong = 0
+        for round in 0..<100 {
+            // The holder never lets go, so `false` is always a wrong answer. `nil` (unknown) is allowed.
+            if await provider.hasOpenFiles(under: questions[round % questions.count]) == false { wrong += 1 }
+        }
+        await churn.value
+        #expect(wrong == 0)
+        await child.stop()
     }
 
     @Test func openFiles_processWhoseCurrentFolderIsInsideTheItemCounts() async throws {
@@ -124,7 +188,7 @@ struct LivenessProviderTests {
         defer { tree.remove() }
         let inner = try tree.addDirectory("project/build")
         let child = try Child("/bin/sleep", ["30"], currentDirectory: inner)
-        defer { child.stop() }
+        defer { child.kill() }
         let provider = ProcessOpenFilesProvider()
 
         #expect(await eventually { await provider.hasOpenFiles(under: tree.url(for: "project")) == true })
@@ -142,7 +206,7 @@ struct LivenessProviderTests {
 
     @Test func owners_runningProcessIsFoundByExactName() async throws {
         let child = try Child("/bin/sleep", ["30"])
-        defer { child.stop() }
+        defer { child.kill() }
         let provider = ProcessNameOwnerProvider()
         let item = URL(filePath: "/tmp/x")
 
@@ -158,7 +222,7 @@ struct LivenessProviderTests {
         let provider = ProcessNameOwnerProvider()
         let item = URL(filePath: "/tmp/x")
         #expect(await eventually { await provider.state(of: .processName("sleep"), for: item) == .running })
-        child.stop()
+        await child.stop()
         // Other tests may run their own `sleep`, so only check that the answer is a clean yes/no.
         let state = await provider.state(of: .processName("sleep"), for: item)
         #expect(state != .unknown)
