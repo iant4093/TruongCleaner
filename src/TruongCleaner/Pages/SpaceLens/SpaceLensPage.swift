@@ -38,9 +38,6 @@ struct SpaceLensPage: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button("Choose Folder…", systemImage: "folder") { chooseFolder() }
                     .help("Choose a folder to explore")
-                Button(rescanTitle, systemImage: "arrow.clockwise") { rescan() }
-                    .help("Scan the folder again")
-                    .disabled(model.isScanning)
             }
         }
     }
@@ -54,14 +51,6 @@ struct SpaceLensPage: View {
         default:
             Page.spaceLens.subtitle
         }
-    }
-
-    private var rescanTitle: String {
-        if case .ready = model.state { "Rescan" } else { "Scan" }
-    }
-
-    private func rescan() {
-        if case .ready = model.state { model.rescan() } else { model.scan() }
     }
 
     private var footnote: some View {
@@ -94,7 +83,7 @@ struct SpaceLensPage: View {
                 Text("See which folders and files take the most space.")
             } actions: {
                 Button("Scan") { model.scan() }
-                    .buttonStyle(.glassProminent)
+                    .modifier(ProminentActionButton())
             }
         case .scanning(let status):
             ScanningView(status: status, onStop: model.cancel)
@@ -183,7 +172,7 @@ private struct ScanningView: View {
             if let path = status.currentPath {
                 Text(path)
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(maxWidth: 420)
@@ -324,8 +313,7 @@ private struct LensRow: View {
             Spacer(minLength: 4)
             if !node.isDenied {
                 sizeBar
-                Text(ByteFormatter.string(node.bytes))
-                    .monospacedDigit()
+                SizeText(bytes: node.bytes)
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 64, alignment: .trailing)
             }

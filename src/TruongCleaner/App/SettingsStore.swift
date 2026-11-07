@@ -88,6 +88,8 @@ final class SettingsStore {
     static let disabledRulesKey = "disabledRules"
     static let deleteModeKey = "deleteMode"
     static let autoUpdateCheckKey = "checkForUpdatesAutomatically"
+    /// `UserDefaults` key for the project folders, a JSON array of absolute paths.
+    static let projectFoldersKey = "projectFolders"
 
     /// How cleans remove items.
     var deleteMode: DeleteModeSetting {
@@ -107,6 +109,10 @@ final class SettingsStore {
 
     /// True when `exclusions.json` exists but could not be read. Scans must not run in this state.
     private(set) var exclusionsUnreadable = false
+
+    /// Folders the user added on the Developer page. `dev.projectArtifacts` looks for build folders
+    /// inside them (`Environment.projectFolders`). Folders the protected list covers are ignored at scan time.
+    private(set) var projectFolders: [URL]
 
     /// The catalog this store filters.
     let catalog: [Rule]
@@ -128,6 +134,7 @@ final class SettingsStore {
         self.deleteMode = defaults.string(forKey: Self.deleteModeKey).flatMap(DeleteModeSetting.init) ?? .trash
         self.checksForUpdatesAutomatically = defaults.object(forKey: Self.autoUpdateCheckKey) as? Bool ?? true
         self.disabledRuleIDs = Self.readDisabledRules(from: defaults)
+        self.projectFolders = Self.readProjectFolders(from: defaults)
         self.loadTask = Task { [storage] in
             let result = await storage.load()
             self.applyLoaded(result)
@@ -224,7 +231,43 @@ final class SettingsStore {
         persistExclusions()
     }
 
+    // MARK: Project folders
+
+    /// Adds folders to search for build output. Duplicates and non-file URLs are ignored.
+    func addProjectFolders(_ urls: [URL]) {
+        var changed = false
+        for url in urls {
+            let folder = url.standardizedFileURL
+            guard folder.isFileURL, folder.path.hasPrefix("/"),
+                  !projectFolders.contains(where: { $0.path == folder.path }) else { continue }
+            projectFolders.append(folder)
+            changed = true
+        }
+        if changed { saveProjectFolders() }
+    }
+
+    /// Removes a folder from the project list.
+    func removeProjectFolder(_ url: URL) {
+        let before = projectFolders.count
+        projectFolders.removeAll { $0.path == url.path }
+        if projectFolders.count != before { saveProjectFolders() }
+    }
+
     // MARK: Private
+
+    private func saveProjectFolders() {
+        let paths = projectFolders.map { $0.path(percentEncoded: false) }
+        guard let data = try? JSONEncoder().encode(paths),
+              let text = String(data: data, encoding: .utf8) else { return }
+        defaults.set(text, forKey: Self.projectFoldersKey)
+    }
+
+    private static func readProjectFolders(from defaults: UserDefaults) -> [URL] {
+        guard let text = defaults.string(forKey: projectFoldersKey),
+              let paths = try? JSONDecoder().decode([String].self, from: Data(text.utf8)) else { return [] }
+        // Only absolute paths count. Anything else would be resolved against an unknown folder.
+        return paths.filter { $0.hasPrefix("/") }.map { URL(filePath: $0, directoryHint: .isDirectory) }
+    }
 
     private func applyLoaded(_ result: ExclusionsStorage.LoadResult) {
         switch result {

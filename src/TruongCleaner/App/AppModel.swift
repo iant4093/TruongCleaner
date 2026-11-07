@@ -20,6 +20,8 @@ final class AppModel {
     let spaceLens = SpaceLensModel()
     /// Data for the Smart Clean page.
     let smartClean: SmartCleanModel
+    /// Data for the Developer page.
+    let developer: DeveloperModel
 
     /// Data for the Trash page.
     let trash: TrashModel
@@ -37,7 +39,11 @@ final class AppModel {
     /// Full Disk Access as of the last probe. Pages that need access read this.
     private(set) var access: AccessState = .unknown
 
+    /// Whether onboarding is on screen. The first launch and Help > Welcome to TruongCleaner set it.
+    var isOnboardingPresented = false
+
     @ObservationIgnored private var isProbingAccess = false
+    @ObservationIgnored private var hasProbedAccess = false
 
     init() {
         let settings = SettingsStore()
@@ -46,6 +52,7 @@ final class AppModel {
         let services = Services()
         self.services = services
         self.smartClean = SmartCleanModel(settings: settings, services: services)
+        self.developer = DeveloperModel(settings: settings, services: services)
         self.trash = TrashModel(services: services, settings: settings)
         self.cleanHistory = HistoryModel(services: services)
     }
@@ -70,6 +77,44 @@ final class AppModel {
                 isEnabled: model.isScanning || model.canScan,
                 perform: { model.isScanning ? model.stopScan() : model.scan() }
             )
+        case .developer:
+            let model = developer
+            return ToolbarScan(
+                isRunning: model.files.isScanning,
+                isEnabled: model.files.isScanning || model.canScan,
+                perform: { model.files.isScanning ? model.files.stopScan() : model.scan() }
+            )
+        case .systemData:
+            let model = systemData
+            let settings = settings
+            // A System Data load cannot be stopped, so the button is disabled while it runs.
+            return ToolbarScan(
+                isRunning: false,
+                isEnabled: !model.isLoading,
+                perform: { Task { await model.refresh(settings: settings) } }
+            )
+        case .largeFiles:
+            let model = largeFiles
+            return ToolbarScan(
+                isRunning: model.isSearching,
+                isEnabled: model.isSearching || !model.folders.isEmpty,
+                perform: { model.isSearching ? model.stop() : model.find() }
+            )
+        case .spaceLens:
+            let model = spaceLens
+            return ToolbarScan(
+                isRunning: model.isScanning,
+                isEnabled: true,
+                perform: {
+                    if model.isScanning {
+                        model.cancel()
+                    } else if case .ready = model.state {
+                        model.rescan()
+                    } else {
+                        model.scan()
+                    }
+                }
+            )
         default:
             return nil
         }
@@ -86,6 +131,13 @@ final class AppModel {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let state = await AccessProbe.fullDiskAccess(home: home)
         guard !Task.isCancelled else { return }
+        let previous = access
         access = state
+        // Only a real change counts: the first probe replaces the "not probed yet" default.
+        if hasProbedAccess, state == .granted, previous != .granted {
+            smartClean.noteAccessGranted()
+            systemData.noteAccessGranted()
+        }
+        hasProbedAccess = true
     }
 }
