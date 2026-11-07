@@ -4,7 +4,7 @@ import Foundation
 
 /// One look at every process's open files, answered many times.
 ///
-/// `ProcessOpenFilesProvider` scans every process on each call (about 120 ms). A clean asks about
+/// `ProcessOpenFilesProvider` takes a new snapshot on each call (about 120 ms). A clean asks about
 /// hundreds of items, so `Cleaner` takes one snapshot per run and refreshes it now and then.
 /// The snapshot records, for each process, its open files, current folder and root folder,
 /// and answers `hasOpenFiles(under:)` from memory.
@@ -13,6 +13,7 @@ import Foundation
 /// "nothing is open": the answer is `nil`, which the gate treats as "keep".
 /// Processes the user may not inspect (other users', system daemons) cannot be seen and are skipped,
 /// as in `ProcessOpenFilesProvider`. A file opened after the snapshot is not seen.
+/// The reading itself lives in ``ProcessInspector``; this type only stores and answers.
 public struct OpenFilesSnapshot: OpenFilesProvider {
     /// How complete the snapshot is.
     enum Completeness: Sendable, Equatable {
@@ -44,7 +45,7 @@ public struct OpenFilesSnapshot: OpenFilesProvider {
         self.completeness = completeness
     }
 
-    private init(prefixes: Set<String>, identities: Set<Identity>, completeness: Completeness) {
+    init(prefixes: Set<String>, identities: Set<Identity>, completeness: Completeness) {
         self.heldPrefixes = prefixes
         self.heldIdentities = identities
         self.completeness = completeness
@@ -55,29 +56,29 @@ public struct OpenFilesSnapshot: OpenFilesProvider {
         OpenFilesSnapshot(prefixes: [], identities: [], completeness: .failed)
     }
 
-    /// Reads every process's open files once.
+    /// Reads every process's open files once, with ``ProcessInspector``.
     ///
     /// - Parameter excludingPIDs: Processes to ignore. The default is this process, so the app's
     ///   own scan handles never block a clean.
-    /// - Returns: The snapshot. If processes cannot be listed it answers `nil` to everything.
-    @concurrent
+    /// - Returns: The snapshot. If processes cannot be listed or too few can be read, it answers
+    ///   `nil` to everything.
     public static func take(excludingPIDs: Set<Int32> = [getpid()]) async -> OpenFilesSnapshot {
-        guard let pids = ProcessOpenFilesProvider.allPIDs() else { return .failed }
-        var prefixes = Set<String>()
-        var identities = Set<Identity>()
-        var incomplete = false
-        for pid in pids where pid > 0 && !excludingPIDs.contains(pid) {
-            if !collect(pid, prefixes: &prefixes, identities: &identities) { incomplete = true }
-        }
-        return OpenFilesSnapshot(
-            prefixes: prefixes, identities: identities, completeness: incomplete ? .incomplete : .complete)
+        await ProcessInspector.captureOffPool(excluding: excludingPIDs)
     }
 
     /// `true` when a process had the item or something inside it open, `false` when none did,
     /// `nil` when the snapshot cannot say.
     public func hasOpenFiles(under url: URL) async -> Bool? {
+        answer(for: url)
+    }
+
+    /// The answer, without the `async` wrapper.
+    ///
+    /// A path is compared by its real location (the folder it is in is resolved, the name is kept),
+    /// because the system reports `/private/var/...` where callers may say `/var/...`.
+    func answer(for url: URL) -> Bool? {
         if completeness == .failed { return nil }
-        guard let parts = PathParts.components(of: url), let info = try? GateSystem.lstatInfo(of: url) else {
+        guard let parts = Self.realLocation(of: url), let info = try? GateSystem.lstatInfo(of: url) else {
             return nil
         }
         let wanted = Self.normalize(parts).joined(separator: "/")
@@ -86,73 +87,20 @@ public struct OpenFilesSnapshot: OpenFilesProvider {
         return completeness == .complete ? false : nil
     }
 
-    // MARK: - Reading processes
-
-    /// Adds one process's paths and file identities. Returns false when an unexpected failure
-    /// means the process may have been missed.
-    private static func collect(_ pid: Int32, prefixes: inout Set<String>, identities: inout Set<Identity>) -> Bool {
-        var complete = true
-
-        // Current and root folders.
-        var folders = proc_vnodepathinfo()
-        let folderSize = Int32(MemoryLayout<proc_vnodepathinfo>.size)
-        errno = 0
-        if proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &folders, folderSize) == folderSize {
-            if let parts = pathParts(&folders.pvi_cdir.vip_path) { insertPrefixes(of: normalize(parts), into: &prefixes) }
-            if let parts = pathParts(&folders.pvi_rdir.vip_path) { insertPrefixes(of: normalize(parts), into: &prefixes) }
-        } else if !isBenign(errno) {
-            complete = false
-        }
-
-        // Open files.
-        errno = 0
-        let listSize = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
-        guard listSize > 0 else { return complete && isBenign(errno) }
-        let entrySize = MemoryLayout<proc_fdinfo>.size
-        // Descriptors can be opened between the two calls, so leave room.
-        let capacity = Int(listSize) / entrySize + 32
-        var descriptors = [proc_fdinfo](repeating: proc_fdinfo(), count: capacity)
-        errno = 0
-        let listed = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &descriptors, Int32(capacity * entrySize))
-        guard listed > 0 else { return complete && isBenign(errno) }
-
-        for descriptor in descriptors.prefix(Int(listed) / entrySize)
-        where descriptor.proc_fdtype == UInt32(PROX_FDTYPE_VNODE) {
-            var info = vnode_fdinfowithpath()
-            let size = Int32(MemoryLayout<vnode_fdinfowithpath>.size)
-            errno = 0
-            if proc_pidfdinfo(pid, descriptor.proc_fd, PROC_PIDFDVNODEPATHINFO, &info, size) == size {
-                let stat = info.pvip.vip_vi.vi_stat
-                identities.insert(Identity(device: stat.vst_dev, inode: stat.vst_ino))
-                if let parts = pathParts(&info.pvip.vip_path) { insertPrefixes(of: normalize(parts), into: &prefixes) }
-            } else if !isBenign(errno) && errno != EBADF && errno != ENOENT {
-                // EBADF/ENOENT: the descriptor closed in the meantime, so it is not open any more.
-                complete = false
-            }
-        }
-        return complete
-    }
-
-    /// Whether a failed `proc_pid*` call only means "nothing to see here": the process ended,
-    /// belongs to someone else, or has nothing to report.
-    private static func isBenign(_ code: Int32) -> Bool {
-        code == 0 || code == ESRCH || code == EPERM || code == EACCES
-    }
-
-    /// Components of the NUL-terminated path in a C character array, or nil when it is empty.
-    private static func pathParts<Buffer>(_ path: inout Buffer) -> [String]? {
-        withUnsafeBytes(of: &path) { bytes in
-            let end = bytes.firstIndex(of: 0) ?? bytes.count
-            guard end > 0 else { return nil }
-            let text = String(decoding: bytes[0..<end], as: UTF8.self)
-            return text.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-        }
+    /// Components of the item's path with its folder resolved through symlinks and firmlinks.
+    /// The last name is kept as given, so a symlink item is judged as the link, not its target.
+    private static func realLocation(of url: URL) -> [String]? {
+        guard let parts = PathParts.components(of: url), let name = parts.last else { return nil }
+        guard let parent = try? GateSystem.realPath(of: url.deletingLastPathComponent()),
+            let parentParts = PathParts.components(of: parent)
+        else { return nil }
+        return parentParts + [name]
     }
 
     // MARK: - Path keys
 
     /// Components in comparison form: case-folded, `/System/Volumes/Data` dropped.
-    private static func normalize(_ parts: [String]) -> [String] {
+    static func normalize(_ parts: [String]) -> [String] {
         let folded = parts.map(PathParts.fold)
         if folded.starts(with: ["system", "volumes", "data"]) { return Array(folded.dropFirst(3)) }
         return folded
@@ -160,7 +108,7 @@ public struct OpenFilesSnapshot: OpenFilesProvider {
 
     /// Adds the path and every parent of it. Stops at the first parent already present,
     /// because its parents were added with it.
-    private static func insertPrefixes(of parts: [String], into set: inout Set<String>) {
+    static func insertPrefixes(of parts: [String], into set: inout Set<String>) {
         var count = parts.count
         while count > 0, set.insert(parts[0..<count].joined(separator: "/")).inserted { count -= 1 }
     }
