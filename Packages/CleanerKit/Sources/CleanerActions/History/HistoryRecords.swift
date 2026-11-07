@@ -19,9 +19,11 @@ struct HistoryLine: Codable {
         static let finish = "finish"
         static let undone = "undone"
         static let freed = "freed"
+        static let command = "command"
     }
 
     var type: String
+    /// The clean the line belongs to. For a `command` line it is the command record's own ID.
     var cleanID: UUID
     var at: Date
     // begin
@@ -37,6 +39,31 @@ struct HistoryLine: Codable {
     // undone, freed
     var findingID: UUID?
     var path: URL?
+    // command
+    var command: CommandRecord?
+}
+
+/// One run of an owner command (`REQ-CLEAN-07`): when it ran, which rule asked, and what it did.
+///
+/// A command that was refused before launch (tool missing, preflight failed) is recorded too, with
+/// its reason in `result.skipped`, so History shows what was asked and why nothing happened.
+public struct CommandRecord: Sendable, Codable, Identifiable {
+    /// ID of this record.
+    public let id: UUID
+    /// When the run began.
+    public let startedAt: Date
+    /// The catalog rule whose action this was, for example `dev.homebrew`.
+    public let ruleID: String
+    /// Exit code, timeout, skip reason and the tail of the output.
+    public let result: OwnerCommandResult
+
+    /// Creates a record.
+    public init(id: UUID = UUID(), startedAt: Date, ruleID: String, result: OwnerCommandResult) {
+        self.id = id
+        self.startedAt = startedAt
+        self.ruleID = ruleID
+        self.result = result
+    }
 }
 
 /// What one clean did, for the History page.

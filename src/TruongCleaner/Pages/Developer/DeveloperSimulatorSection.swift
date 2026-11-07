@@ -1,3 +1,4 @@
+import CleanerScanner
 import SwiftUI
 
 /// Simulators (`docs/UI.md` §4.4): a table of devices, a table of runtimes, and the commands that delete them.
@@ -9,6 +10,7 @@ struct DeveloperSimulatorSection: View {
     private static let headerHeight: CGFloat = 32
 
     let model: DeveloperModel
+    let access: AccessState
     @Binding var pending: DeveloperAction?
 
     var body: some View {
@@ -28,6 +30,10 @@ struct DeveloperSimulatorSection: View {
             case .ready:
                 deviceTable
                 runtimeTable
+            }
+
+            ForEach(model.rows(DeveloperRuleIDs.simulatorFiles)) { row in
+                SmartCleanRuleRow(row: row, model: model.files, access: access)
             }
 
             if let command = model.command(DeveloperRuleIDs.simulatorCommand) {
