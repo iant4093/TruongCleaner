@@ -42,6 +42,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 2.4 | B | | `ScanEngine` + `Matcher` (needs 2.1, 2.3) | SCAN-01, SCAN-08, RULE-03, RULE-04 |
 | [x] | 2.5 | B | | Overview page: storage bar (Charts), details, recommendations placeholder | SYS-01, SYS-03, UI-02 |
 | [ ] | 2.6 | B | | `tcbench` scenarios; numbers into EVIDENCE | PERF-01..05 |
+| [~] | 2.6b | B | | Investigate cancel latency on a 3-core runner (CI saw 3.3 s for a 200 ms budget in `cancellingTheStreamConsumerEndsPromptly`): look for cooperative-pool starvation (semaphore waits in `ReadOnlyCommand`/`OwnerProcess`, `WalkPool` condition waits) and measure with `taskpolicy`/limited cores | SCAN-05 |
 | [ ] | 2.7 | I | | Overview totals vs `df` and System Settings ✋ | — |
 
 ## Wave 3: Clean engine + Smart Clean
@@ -50,7 +51,7 @@ brief in `docs/briefs/<id>.md`.
 |---|---|---|---|---|---|
 | [x] | 3.1 | B | a | `SafetyGate`, providers protocols, `SkipReason`; `SafetyRulesTests` covering `safety.md` 1–16 and `RESEARCH.md` §3.3 incidents | SAFE-01..12 |
 | [x] | 3.2 | B | b | Catalog: caches, logs, trash, browsers, apps rules with rule-obligation tests | RULE-01..04 |
-| [ ] | 3.3 | B | | `TrashExecutor`, `DeleteExecutor`, `History`, `Undo`, `Cleaner.run/preview` (needs 3.1) | CLEAN-01..05 |
+| [x] | 3.3 | B | | `TrashExecutor`, `DeleteExecutor`, `History`, `Undo`, `Cleaner.run/preview` (needs 3.1) | CLEAN-01..05 |
 | [ ] | 3.4 | B | | App `RunningApps` + `OpenFiles` providers (`proc_listpidspath`) | SAFE-07, SAFE-08 |
 | [ ] | 3.5 | B | | Smart Clean page, clean bar, confirm dialog, result sheet with measured delta | CLEAN-02, CLEAN-06, UI-03, UI-06 |
 | [ ] | 3.6 | B | | Trash + History pages, Put Back, Free Space Now | CLEAN-04, CLEAN-05 |
@@ -74,9 +75,9 @@ brief in `docs/briefs/<id>.md`.
 |---|---|---|---|---|---|
 | [x] | 5.1 | B | a | Large & Old Files page (Table, Quick Look) | UI-02, UI-05 |
 | [x] | 5.2 | B | b | Space Lens sunburst with drill-down (fallback to `Canvas` if Charts is slow) | PERF-07 |
-| [ ] | 5.3 | B | c | Settings window: delete mode, exclusions, rules, update check | RULE-05, DIST-04 |
-| [ ] | 5.4 | B | | `AccessProbe` + Needs Access rows + re-check on activate | PERM-01..04 |
-| [ ] | 5.5 | B | | Update checker (GitHub API, once per day) | DIST-04, DIST-05 |
+| [x] | 5.3 | B | c | Settings window: delete mode, exclusions, rules, update check | RULE-05, DIST-04 |
+| [x] | 5.4 | B | | `AccessProbe` + Needs Access rows + re-check on activate | PERM-01..04 |
+| [x] | 5.5 | B | | Update checker (GitHub API, once per day) | DIST-04, DIST-05 |
 
 ## Wave 6: App Uninstaller (optional for 1.0, Q3)
 
