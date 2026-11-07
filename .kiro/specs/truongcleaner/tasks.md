@@ -39,8 +39,8 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 2.1 | B | a | `BulkWalker` + `WalkPool` + `SizeAccumulator` (or S1's winner) with fixture tests: totals, hard links, symlinks, unreadable dirs, cancellation, device boundary | SCAN-02..07, SCAN-09 |
 | [x] | 2.2 | B | b | `VolumeInfo`, `Snapshots`, `ReadOnlyCommand` with parser tests on captured output | SYS-01, SYS-02 |
 | [x] | 2.3 | B | c | CleanerCore models + `PathPolicy` + `ByteFormatter` + catalog well-formedness tests (catalog empty but shaped) | RULE-01 |
-| [~] | 2.4 | B | | `ScanEngine` + `Matcher` (needs 2.1, 2.3) | SCAN-01, SCAN-08, RULE-03, RULE-04 |
-| [ ] | 2.5 | B | | Overview page: storage bar (Charts), details, recommendations placeholder | SYS-01, SYS-03, UI-02 |
+| [x] | 2.4 | B | | `ScanEngine` + `Matcher` (needs 2.1, 2.3) | SCAN-01, SCAN-08, RULE-03, RULE-04 |
+| [~] | 2.5 | B | | Overview page: storage bar (Charts), details, recommendations placeholder | SYS-01, SYS-03, UI-02 |
 | [ ] | 2.6 | B | | `tcbench` scenarios; numbers into EVIDENCE | PERF-01..05 |
 | [ ] | 2.7 | I | | Overview totals vs `df` and System Settings ✋ | — |
 
@@ -49,7 +49,7 @@ brief in `docs/briefs/<id>.md`.
 | ✓ | ID | Owner | Par | Task | Reqs |
 |---|---|---|---|---|---|
 | [~] | 3.1 | B | a | `SafetyGate`, providers protocols, `SkipReason`; `SafetyRulesTests` covering `safety.md` 1–16 and `RESEARCH.md` §3.3 incidents | SAFE-01..12 |
-| [~] | 3.2 | B | b | Catalog: caches, logs, trash, browsers, apps rules with rule-obligation tests | RULE-01..04 |
+| [x] | 3.2 | B | b | Catalog: caches, logs, trash, browsers, apps rules with rule-obligation tests | RULE-01..04 |
 | [ ] | 3.3 | B | | `TrashExecutor`, `DeleteExecutor`, `History`, `Undo`, `Cleaner.run/preview` (needs 3.1) | CLEAN-01..05 |
 | [ ] | 3.4 | B | | App `RunningApps` + `OpenFiles` providers (`proc_listpidspath`) | SAFE-07, SAFE-08 |
 | [ ] | 3.5 | B | | Smart Clean page, clean bar, confirm dialog, result sheet with measured delta | CLEAN-02, CLEAN-06, UI-03, UI-06 |
