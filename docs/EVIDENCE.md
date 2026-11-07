@@ -194,3 +194,14 @@ deletion-site check PASS, package tests PASS, Debug app builds.
   when the size-ranked list could hide old files). `NSPasteboard` approved in `tech.md`.
 - 5.2: Space Lens sunburst, depth 3, ≤ 40 slices per node, breadcrumb, Quick Look,
   Needs-access rows.
+
+### Task 4.2 review (2026-11-06)
+
+All catalog sections §4.1–§4.10 encoded. Package suite after merge: CleanerScanner
+132, CleanerCore 158, CleanerActions 126 tests, all pass (one semantic merge break
+in a 3.3 test fixed by the orchestrator: `OwnerCommandSpec.id`). Gaps accepted for
+v1 and listed in `build/dispatch/4.2.log`: no git-tracked check for project
+artifacts (artifacts containing `.git` are skipped instead), no creation-date check
+for Mail downloads, no signature check for macOS installers, approximate process
+owners for Gradle (`java`) and npm (`node`). Follow-up 2.4b: nested rule overlap
+(`user.caches` vs `dev.xcodeCaches` etc.) and pruned project walks.

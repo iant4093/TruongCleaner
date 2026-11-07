@@ -41,6 +41,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 2.3 | B | c | CleanerCore models + `PathPolicy` + `ByteFormatter` + catalog well-formedness tests (catalog empty but shaped) | RULE-01 |
 | [x] | 2.4 | B | | `ScanEngine` + `Matcher` (needs 2.1, 2.3) | SCAN-01, SCAN-08, RULE-03, RULE-04 |
 | [x] | 2.5 | B | | Overview page: storage bar (Charts), details, recommendations placeholder | SYS-01, SYS-03, UI-02 |
+| [ ] | 2.4b | B | | Nested rule overlaps (`coveredByOtherRule`) and pruned project walks | SCAN-07 |
 | [ ] | 2.6 | B | | `tcbench` scenarios; numbers into EVIDENCE | PERF-01..05 |
 | [~] | 2.6b | B | | Investigate cancel latency on a 3-core runner (CI saw 3.3 s for a 200 ms budget in `cancellingTheStreamConsumerEndsPromptly`): look for cooperative-pool starvation (semaphore waits in `ReadOnlyCommand`/`OwnerProcess`, `WalkPool` condition waits) and measure with `taskpolicy`/limited cores | SCAN-05 |
 | [ ] | 2.7 | I | | Overview totals vs `df` and System Settings ✋ | — |
@@ -62,10 +63,10 @@ brief in `docs/briefs/<id>.md`.
 
 | ✓ | ID | Owner | Par | Task | Reqs |
 |---|---|---|---|---|---|
-| [ ] | 4.1 | B | a | Info rules (`system.*`, `logs.system`, `mail.store`, …) + System Data page + Copy Command | SYS-03..05 |
-| [ ] | 4.2 | B | b | Developer rules (Xcode, SwiftPM, npm, Yarn, Bun, pip, uv, Cargo, Gradle, Maven, CocoaPods, Android) | RULE-01 |
+| [~] | 4.1 | B | a | Info rules (`system.*`, `logs.system`, `mail.store`, …) + System Data page + Copy Command | SYS-03..05 |
+| [x] | 4.2 | B | b | Developer rules (Xcode, SwiftPM, npm, Yarn, Bun, pip, uv, Cargo, Gradle, Maven, CocoaPods, Android) | RULE-01 |
 | [x] | 4.3 | B | c | `OwnerCommand` runner + `dev.simUnavailable`, `dev.simDevices`, `dev.simRuntimes`, `dev.homebrew`, `dev.pnpm`, `dev.go*`, `dev.dockerDangling` (tests use fake executables in fixtures) | CLEAN-07 |
-| [ ] | 4.4 | B | | Mail, iOS, installers rules | RULE-01 |
+| [x] | 4.4 | B | | Mail, iOS, installers rules | RULE-01 |
 | [ ] | 4.5 | B | | Developer page with simulators table and project folders | UI-02 |
 | [ ] | 4.6 | I | | System Data page vs System Settings ✋ | — |
 
