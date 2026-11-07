@@ -1,10 +1,11 @@
+import CleanerCore
 import SwiftUI
 
 /// Startup disk overview, modeled on System Settings > Storage (`docs/UI.md` §4.1).
 struct OverviewPage: View {
     let model: OverviewModel
-    @Environment(AppModel.self) private var appModel
-    @Environment(\.scenePhase) private var scenePhase
+    @SwiftUI.Environment(AppModel.self) private var appModel
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Form {
@@ -61,10 +62,27 @@ struct OverviewPage: View {
                 subtitle: data.subtitle,
                 spokenSubtitle: data.spokenSubtitle
             )
-            StorageBar(segments: data.segments, total: data.volume.total)
+            StorageBar(
+                segments: OverviewModel.segments(for: data.volume, categories: appModel.categories.totals),
+                total: data.volume.total
+            )
+            categoryStatus
         }
 
         Section("Storage details") {
+            if let systemData = OverviewModel.systemDataBytes(for: data.volume, categories: appModel.categories.totals) {
+                detailRow(
+                    "System Data",
+                    value: ByteFormatter.string(systemData),
+                    spoken: SpokenSize.string(systemData),
+                    info: "What is left of the Data volume after purgeable space and the folders "
+                        + "TruongCleaner measured: apps, documents, caches, developer data, mail and "
+                        + "the rest of your home folder. It holds macOS files, local snapshots, other "
+                        + "users' hidden data and space shared between cloned copies of files. "
+                        + "Sizes in the bar count the space each folder holds on its own, so cloned "
+                        + "data that two copies share is not in any of them."
+                )
+            }
             detailRow(
                 "Purgeable",
                 value: data.purgeableText,
@@ -94,6 +112,33 @@ struct OverviewPage: View {
                 info: "Free space plus purgeable space. This is the amount Finder and System Settings "
                     + "show as available. It comes from the volume's capacity values."
             )
+        }
+    }
+
+    /// A small note under the bar: measuring progress, or why some sizes are missing.
+    @ViewBuilder
+    private var categoryStatus: some View {
+        let categories = appModel.categories
+        if categories.isMeasuring {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Measuring your files")
+                Text("Measuring your files…")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Button("Stop") { categories.cancel() }
+                    .controlSize(.small)
+                    .accessibilityHint("Stops measuring and keeps the previous sizes")
+            }
+            .font(.callout)
+        } else if let totals = categories.totals, totals.totalNeedsAccess > 0 {
+            Label(
+                "Some folders need Full Disk Access, so their sizes are missing from the bar.",
+                systemImage: "lock.fill"
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
         }
     }
 

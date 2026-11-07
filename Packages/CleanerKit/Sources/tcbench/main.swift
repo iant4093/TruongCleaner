@@ -13,6 +13,8 @@ Dev-only benchmark tool for CleanerKit.
 scenarios:
   volume
       Print volume capacity, snapshots, swap and simulator counts (read-only).
+  categories <home> [--no-system]
+      Measure the Data volume's categories (apps, documents, caches, developer, ...) and print them (read-only).
   walk <root> [--workers n] [--depth d]
       Walk <root> with BulkWalker and print a summary (no per-file output).
       --workers n   worker threads, 1...8 (default: min(8, cores))
@@ -108,6 +110,8 @@ case "volume":
     await VolumeCommand.run()
 case "walk":
     await runWalk(Array(arguments.dropFirst()))
+case "categories":
+    await CategoriesCommand.run(Array(arguments.dropFirst()))
 case "scan-demo":
     await ScanDemoCommand.run(Array(arguments.dropFirst()))
 case nil, "-h", "--help", "help":

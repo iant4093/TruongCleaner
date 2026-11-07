@@ -11,8 +11,24 @@ final class SystemDataModel {
     /// A load that finished less than this long ago is not repeated when the page reappears.
     static let minimumRefreshInterval: Duration = .seconds(300)
 
-    /// The last finished load. Stays on screen while a new load runs.
-    private(set) var report: SystemDataReport?
+    /// The category measurement that the Unexplained number subtracts. Shared with the Overview page.
+    let categories: CategoryModel
+
+    /// The answers of the last finished load. Stays on screen while a new load runs.
+    private var loadedInputs: SystemDataInputs?
+
+    init(categories: CategoryModel) {
+        self.categories = categories
+    }
+
+    /// The last finished load, combined with the category measurement as it stands now.
+    /// Stays on screen while a new load runs. Rebuilt on each read; the work is a few dozen rows.
+    var report: SystemDataReport? {
+        guard var inputs = loadedInputs else { return nil }
+        inputs.categories = categories.totals
+        inputs.isMeasuringCategories = categories.isMeasuring
+        return SystemDataBuilder.build(inputs)
+    }
     /// True while a load runs.
     private(set) var isLoading = false
     /// Set when no scan could run. Cleared by the next load.
@@ -26,27 +42,30 @@ final class SystemDataModel {
 
     /// Loads unless a recent load already exists. Call when the page appears.
     func loadIfNeeded(settings: SettingsStore) async {
-        if report != nil, let lastLoad, lastLoad.duration(to: .now) < Self.minimumRefreshInterval {
+        if loadedInputs != nil, let lastLoad, lastLoad.duration(to: .now) < Self.minimumRefreshInterval {
             return
         }
-        await refresh(settings: settings)
+        await refresh(settings: settings, forceCategories: false)
     }
 
     /// Marks the numbers on screen as measured before Full Disk Access was granted.
     ///
     /// Does nothing when nothing has been measured yet, because the next load already sees the new access.
     func noteAccessGranted() {
-        if report != nil || isLoading { accessChangedSinceLoad = true }
+        if loadedInputs != nil || isLoading { accessChangedSinceLoad = true }
     }
 
     /// Measures everything again and replaces ``report``.
     ///
     /// A load that is cancelled (the user left the page) changes nothing, so the next appearance loads again.
-    func refresh(settings: SettingsStore) async {
+    /// - Parameter forceCategories: Measure the categories again even if the last measurement is under ten
+    ///   minutes old. True when the user asked for the scan; false for the automatic load on appearance.
+    func refresh(settings: SettingsStore, forceCategories: Bool = true) async {
         guard !isLoading else { return }
         isLoading = true
         accessChangedSinceLoad = false
         defer { isLoading = false }
+        categories.start(force: forceCategories)
 
         // Unknown means keep: an exclusions file we cannot read means we do not scan.
         guard let exclusions = await settings.loadedExclusions() else {
@@ -79,7 +98,7 @@ final class SystemDataModel {
         )
         guard !Task.isCancelled else { return }
 
-        report = SystemDataBuilder.build(inputs)
+        loadedInputs = inputs
         lastLoad = .now
     }
 

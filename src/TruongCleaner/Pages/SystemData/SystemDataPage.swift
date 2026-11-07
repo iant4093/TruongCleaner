@@ -74,7 +74,7 @@ struct SystemDataPage: View {
 }
 
 extension SystemDataReport {
-    /// Bar parts: purgeable space, each section's measured sizes, and the unexplained rest.
+    /// Bar parts: purgeable space, your files and apps, each section's measured sizes, and the unexplained rest.
     @MainActor
     var segments: [StorageSegment] {
         let purgeableID = "system.purgeable"
@@ -85,6 +85,9 @@ extension SystemDataReport {
                 color: .orange
             ),
         ]
+        if let categoryBytes {
+            result.append(StorageSegment(label: "Your files and apps", bytes: categoryBytes, color: .blue))
+        }
         for section in SystemDataSection.allCases {
             let bytes = rows(in: section)
                 .filter { $0.countsTowardUsed && $0.id != purgeableID }
