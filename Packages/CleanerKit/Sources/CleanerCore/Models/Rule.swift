@@ -73,35 +73,51 @@ public struct Finding: Sendable, Identifiable {
     public let ruleID: String
     /// Location of the item.
     public let url: URL
-    /// Device ID at scan time. Compared again just before any action.
-    public let device: UInt64
+    /// File system ID (`ATTR_CMN_FSID`) at scan time. Compared again just before any action.
+    public let fsid: UInt64
     /// File ID at scan time. Compared again just before any action.
     public let fileID: UInt64
     /// Allocated bytes on disk (not logical size).
     public let allocatedBytes: Int64
+    /// Bytes that only this item owns (not shared with APFS clones). Used for "space to be freed".
+    public let privateBytes: Int64
     /// Newest modification date found inside the item, if readable.
     public let newestModification: Date?
     /// Whether the item is a folder.
     public let isDirectory: Bool
+    /// Whether the item itself is a symbolic link.
+    public let isSymlink: Bool
+    /// BSD file flags at scan time (`st_flags`), for example `UF_IMMUTABLE`.
+    public let flags: UInt32
+    /// Number of file system entries inside the item, including the item itself.
+    public let itemCount: Int
 
     /// Creates a finding.
     public init(
         id: UUID = UUID(),
         ruleID: String,
         url: URL,
-        device: UInt64,
+        fsid: UInt64,
         fileID: UInt64,
         allocatedBytes: Int64,
+        privateBytes: Int64,
         newestModification: Date?,
-        isDirectory: Bool
+        isDirectory: Bool,
+        isSymlink: Bool,
+        flags: UInt32,
+        itemCount: Int
     ) {
         self.id = id
         self.ruleID = ruleID
         self.url = url
-        self.device = device
+        self.fsid = fsid
         self.fileID = fileID
         self.allocatedBytes = allocatedBytes
+        self.privateBytes = privateBytes
         self.newestModification = newestModification
         self.isDirectory = isDirectory
+        self.isSymlink = isSymlink
+        self.flags = flags
+        self.itemCount = itemCount
     }
 }
