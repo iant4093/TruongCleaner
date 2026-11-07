@@ -80,10 +80,13 @@ enum RootScanner {
             return outcome
         }
 
+        let prune = GlobPrune(rule: rule)
         let options = WalkOptions(
             maxWorkers: context.workers,
             totalsDepth: shape.totalsDepth,
-            topFilesCount: 0
+            topFilesCount: 0,
+            pruneNames: prune.names,
+            pruneKeepNames: prune.keepNames
         )
         let progress = context.progress
         let result: WalkResult

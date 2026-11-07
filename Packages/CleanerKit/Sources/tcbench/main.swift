@@ -17,6 +17,8 @@ scenarios:
       Walk <root> with BulkWalker and print a summary (no per-file output).
       --workers n   worker threads, 1...8 (default: min(8, cores))
       --depth d     keep folder totals to depth d below the root (default: 1)
+      --prune a,b   total folders with these names as one node (for example node_modules)
+      --keep a,b    with --prune: direct children with these names keep their own node (for example .git)
 """
 
 /// Peak resident set size in bytes (`ru_maxrss` is bytes on macOS).
@@ -35,6 +37,8 @@ func runWalk(_ arguments: [String]) async {
     var root: String?
     var workers = min(8, ProcessInfo.processInfo.activeProcessorCount)
     var depth = 1
+    var prune: Set<String> = []
+    var keep: Set<String> = []
     var index = 0
     while index < arguments.count {
         let argument = arguments[index]
@@ -44,6 +48,11 @@ func runWalk(_ arguments: [String]) async {
                 fail("\(argument) needs a number\n\n\(usage)")
             }
             if argument == "--workers" { workers = value } else { depth = value }
+            index += 2
+        case "--prune", "--keep":
+            guard index + 1 < arguments.count else { fail("\(argument) needs a comma-separated list\n\n\(usage)") }
+            let names = Set(arguments[index + 1].split(separator: ",").map(String.init))
+            if argument == "--prune" { prune = names } else { keep = names }
             index += 2
         default:
             guard root == nil, !argument.hasPrefix("--") else { fail("unexpected argument: \(argument)\n\n\(usage)") }
@@ -55,7 +64,7 @@ func runWalk(_ arguments: [String]) async {
     guard workers >= 1 else { fail("--workers must be at least 1") }
 
     let url = URL(filePath: root, directoryHint: .isDirectory)
-    let options = WalkOptions(maxWorkers: workers, totalsDepth: depth)
+    let options = WalkOptions(maxWorkers: workers, totalsDepth: depth, pruneNames: prune, pruneKeepNames: keep)
     let clock = ContinuousClock()
     let start = clock.now
     let result: WalkResult
@@ -76,6 +85,7 @@ func runWalk(_ arguments: [String]) async {
     line("root", result.root.path)
     line("workers", "\(min(workers, min(8, ProcessInfo.processInfo.activeProcessorCount))) (requested \(workers))")
     line("totals depth", "\(depth) (\(result.nodes.count) nodes kept)")
+    if !prune.isEmpty { line("pruned names", prune.sorted().joined(separator: ",")) }
     line("wall seconds", String(format: "%.3f", seconds))
     line("files", "\(result.files)")
     line("folders", "\(result.directories)")
