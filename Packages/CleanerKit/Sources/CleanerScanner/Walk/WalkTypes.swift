@@ -3,6 +3,8 @@ import Foundation
 /// Settings for one `BulkWalker.walk` call.
 public struct WalkOptions: Sendable {
     /// Number of worker threads. Clamped to `1...min(8, activeProcessorCount)` when the walk starts.
+    /// When the walk shares a thread budget with other walks, it starts with one thread and this is the
+    /// most it may grow to.
     public var maxWorkers: Int
     /// Folder totals are kept for every entry at depth `0...totalsDepth` below the root (root = 0).
     /// Deeper entries are added into their nearest kept ancestor and are not kept individually.
@@ -28,6 +30,11 @@ public struct WalkOptions: Sendable {
     /// A child whose name has non-ASCII characters is always kept, because its name cannot be compared
     /// safely. Has no effect without `pruneNames`.
     public var pruneKeepNames: Set<String>
+    /// Shared thread budget of a scan. When set, the walk starts with one thread (the caller already holds
+    /// it in the budget) and takes more, up to `maxWorkers`, while the budget has room.
+    var budget: WorkerBudget?
+    /// Folders to leave unopened because they cannot hold or be a match of a `.glob` rule.
+    var descent: DescentFilter?
 
     /// Creates walk options.
     public init(

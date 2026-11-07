@@ -12,22 +12,50 @@ import Foundation
 /// catalog rule is "enabled" and no folder is excluded.
 enum SmartCleanCommand {
     private static let usage = """
-        usage: tcbench smartclean <home>
+        usage: tcbench smartclean <home> [--rules] [--roots n] [--workers n]
 
         Runs every rule that the Smart Clean page offers (see Catalog.all) through ScanEngine against
         <home>. Read-only.
+          --rules     print one line per rule: seconds, findings, allocated bytes, private bytes
+          --roots n   roots walked at once (default: the engine's default)
+          --workers n most threads one root may use (default: the engine's default)
         """
 
     static func run(_ arguments: [String]) async {
-        guard arguments.count == 1, !arguments[0].hasPrefix("--") else { fail(usage) }
-        let home = URL(filePath: arguments[0], directoryHint: .isDirectory)
+        var listRules = false
+        var roots: Int?
+        var workers: Int?
+        var paths: [String] = []
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            switch argument {
+            case "--rules":
+                listRules = true
+                index += 1
+            case "--roots", "--workers":
+                guard index + 1 < arguments.count, let value = Int(arguments[index + 1]), value >= 1 else {
+                    fail("\(argument) needs a number\n\n\(usage)")
+                }
+                if argument == "--roots" { roots = value } else { workers = value }
+                index += 2
+            default:
+                guard !argument.hasPrefix("--") else { fail(usage) }
+                paths.append(argument)
+                index += 1
+            }
+        }
+        guard paths.count == 1 else { fail(usage) }
+        let home = URL(filePath: paths[0], directoryHint: .isDirectory)
         let rules = Catalog.all.filter(isOffered)
         let environment = Environment(
             home: home,
             darwinUserCache: darwinDirectory(_CS_DARWIN_USER_CACHE_DIR),
             darwinUserTemp: darwinDirectory(_CS_DARWIN_USER_TEMP_DIR)
         )
-        let request = ScanRequest(rules: rules, environment: environment)
+        var request = ScanRequest(rules: rules, environment: environment)
+        if let roots { request.maxConcurrentRoots = roots }
+        if let workers { request.workersPerRoot = workers }
 
         let engine = ScanEngine()
         let clock = ContinuousClock()
@@ -70,6 +98,13 @@ enum SmartCleanCommand {
         line("peak memory bytes", "\(peakResidentBytes())")
         for result in report.results.sorted(by: { $0.duration > $1.duration }).prefix(5) {
             line("slow rule", "\(seconds(result.duration)) s  \(result.ruleID)")
+        }
+        if listRules {
+            for result in report.results {
+                line(
+                    "rule", "\(seconds(result.duration)) s  \(result.findings.count) findings  "
+                        + "\(result.measuredBytes) B  \(result.measuredPrivateBytes) B private  \(result.ruleID)")
+            }
         }
     }
 

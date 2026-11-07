@@ -14,8 +14,11 @@ scenarios:
       Print volume capacity, snapshots, swap and simulator counts (read-only).
   categories <home> [--no-system]
       Measure the Data volume's categories (apps, documents, caches, developer, ...) and print them (read-only).
-  smartclean <home>
+  smartclean <home> [--rules] [--roots n] [--workers n]
       Scan every rule the Smart Clean page offers through ScanEngine against <home> and print totals and timing (read-only).
+      --rules       also print one line per rule
+      --roots n     roots walked at once (default: the engine's default)
+      --workers n   most threads one root may use (default: the engine's default)
   walk <root> [--workers n] [--depth d]
       Walk <root> with BulkWalker and print a summary (no per-file output).
       --workers n   worker threads, 1...8 (default: min(8, cores))

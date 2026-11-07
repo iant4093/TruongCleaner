@@ -562,19 +562,31 @@ struct ScanEngineTests {
     // MARK: Parallelism and progress
 
     @Test(arguments: [
-        (8, 2, 4, 2, 4), (8, 4, 4, 4, 2), (8, 20, 4, 8, 1), (8, 0, 0, 1, 1), (4, 2, 4, 2, 2), (2, 2, 4, 2, 1),
+        (8, 2, 4, 2, 4), (8, 4, 4, 4, 4), (8, 20, 8, 6, 6), (8, 0, 0, 1, 1), (4, 2, 4, 2, 4), (2, 2, 4, 2, 2),
+        (14, 3, 8, 3, 6),
     ])
-    func limitsKeepTotalThreadsWithinTheBudget(cores: Int, roots: Int, workers: Int, wantRoots: Int, wantWorkers: Int) {
+    func limitsClampRootsAndWorkersToTheThreadBudget(
+        cores: Int, roots: Int, workers: Int, wantRoots: Int, wantWorkers: Int
+    ) {
         let request = ScanRequest(
             rules: [], environment: Environment(home: URL(filePath: "/tmp", directoryHint: .isDirectory)),
             maxConcurrentRoots: roots, workersPerRoot: workers)
         let limits = ScanRun.Limits(request, cores: cores)
         #expect(limits == ScanRun.Limits(roots: wantRoots, workers: wantWorkers))
-        #expect(limits.roots * limits.workers <= min(8, cores) || limits.roots * limits.workers == 1)
+        #expect(limits.roots <= ScanRun.Limits.threadBudget(cores: cores))
+        #expect(limits.workers <= ScanRun.Limits.threadBudget(cores: cores))
     }
 
     @Test
-    func manyRulesAndRootsAllFinishInRequestOrder() async throws {
+    func threadBudgetNeverExceedsTheCoresOrTheRuleOfEight() {
+        #expect(ScanRun.Limits.threadBudget(cores: 1) == 1)
+        #expect(ScanRun.Limits.threadBudget(cores: 4) == 4)
+        #expect(ScanRun.Limits.threadBudget(cores: 64) <= 8)
+        #expect(ScanRun.Limits.threadBudget(cores: 0) == 1)
+    }
+
+    @Test
+    func manyRulesAndRootsAllFinishAndTheReportIsInRequestOrder() async throws {
         let fixture = try EngineFixture()
         defer { fixture.remove() }
         var rules: [Rule] = []
@@ -585,14 +597,20 @@ struct ScanEngineTests {
 
         let (events, report) = await fixture.scan(rules, roots: 3, workers: 2)
 
+        // The report is in request order, whatever order the rules finished in.
         #expect(report.results.map(\.ruleID) == rules.map(\.id))
         for (index, result) in report.results.enumerated() {
             #expect(result.measuredBytes == fixture.bytes(index + 1))
         }
+        // The rules do not share any path, so they may arrive in any order. Each arrives once.
         let finished = events.compactMap { event -> String? in
             if case .ruleFinished(let result) = event { result.ruleID } else { nil }
         }
-        #expect(finished == rules.map(\.id))
+        #expect(finished.sorted() == rules.map(\.id).sorted())
+        let started = events.compactMap { event -> String? in
+            if case .ruleStarted(let id) = event { id } else { nil }
+        }
+        #expect(started.sorted() == rules.map(\.id).sorted())
         if case .finished = events.last {} else { Issue.record("`.finished` is not the last event") }
     }
 

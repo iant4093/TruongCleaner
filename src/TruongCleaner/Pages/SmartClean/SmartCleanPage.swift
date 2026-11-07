@@ -81,47 +81,45 @@ struct SmartCleanPage: View {
 
     // MARK: During a scan
 
+    /// Progress at the top, then every section as soon as its rules have finished.
     private func scanningForm(_ progress: ScanProgress) -> some View {
         Form {
-            header("Scanning…")
+            header(scanningSubtitle)
 
             Section {
-                ForEach(model.categoryProgress) { item in
-                    HStack(spacing: 12) {
-                        Text(item.category.smartCleanTitle)
-                        Spacer(minLength: 8)
-                        if item.isDone {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .accessibilityLabel("Done")
-                        } else {
-                            ProgressView(value: Double(item.finishedRules), total: Double(item.totalRules))
-                                .progressViewStyle(.linear)
-                                .frame(width: 90)
-                                .accessibilityLabel("\(item.category.smartCleanTitle) progress")
-                        }
-                        SizeText(bytes: item.bytes)
-                            .foregroundStyle(.secondary)
-                            .frame(minWidth: 70, alignment: .trailing)
-                            .opacity(item.finishedRules == 0 ? 0 : 1)
-                    }
-                    .accessibilityElement(children: .combine)
+                ProgressView(value: Double(model.finishedRuleCount), total: Double(max(1, model.totalRuleCount))) {
+                    Text("\(model.finishedRuleCount) of \(model.totalRuleCount) checks done")
+                        .monospacedDigit()
                 }
-            } footer: {
-                Text("\(progress.files.formatted()) files checked")
-                    .monospacedDigit()
-            }
-
-            Section {
+                .progressViewStyle(.linear)
+                .accessibilityLabel("Scan progress")
+                .accessibilityValue("\(model.finishedRuleCount) of \(model.totalRuleCount) checks done")
                 HStack {
+                    Text("\(progress.files.formatted()) files checked")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Button("Stop") { model.stopScan() }
-                        .controlSize(.large)
-                    Spacer()
+                }
+            } footer: {
+                if let waiting = stillChecking {
+                    Text("Still checking: \(waiting)")
                 }
             }
+
+            resultSections
         }
         .formStyle(.grouped)
+    }
+
+    private var scanningSubtitle: String {
+        "Scanning… Results appear below as each check finishes."
+    }
+
+    /// Names of the categories that still have checks running, for the footer. `nil` when none.
+    private var stillChecking: String? {
+        let names = model.categoryProgress.filter { !$0.isDone }.map(\.category.smartCleanTitle)
+        return names.isEmpty ? nil : names.formatted(.list(type: .and))
     }
 
     // MARK: Results
@@ -150,18 +148,24 @@ struct SmartCleanPage: View {
                 }
             }
 
-            ForEach(model.sections) { section in
-                Section {
-                    ForEach(section.rows) { row in
-                        SmartCleanRuleRow(row: row, model: model, access: app.access)
-                    }
-                } header: {
-                    sectionHeader(section)
-                }
-            }
+            resultSections
         }
         .formStyle(.grouped)
         .disabled(model.isCleaning)
+    }
+
+    /// One section per category with something to show. Used while scanning and when the scan is done.
+    @ViewBuilder
+    private var resultSections: some View {
+        ForEach(model.sections) { section in
+            Section {
+                ForEach(section.rows) { row in
+                    SmartCleanRuleRow(row: row, model: model, access: app.access)
+                }
+            } header: {
+                sectionHeader(section)
+            }
+        }
     }
 
     private var resultsSubtitle: String {
