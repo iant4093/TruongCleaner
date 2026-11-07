@@ -16,8 +16,10 @@ The app works end to end in Debug and Release builds. Merged and reviewed:
 | 5 Pages | Large & Old Files, Space Lens, Settings (exclusions, rules, delete mode, permissions), FDA probe, update checker |
 | 7 Polish (partial) | Onboarding, Overview recommendations, accessibility pass |
 
-In progress at the time of writing: 7.3 (app icon + README screenshots), 4.5b
-(owner-command history, simulator caches row). See `.kiro/specs/truongcleaner/tasks.md`.
+Also done: 7.3 (app icon, README screenshots), 4.5b (owner-command history),
+4.6 (home-folder categories in Overview and System Data), Release stripping
+(app 4.1 MB). Open: 2.6 perf numbers, Wave 6 uninstaller (after 1.0), hand
+checks below. See `.kiro/specs/truongcleaner/tasks.md`.
 
 ## How changes reach `main` now
 

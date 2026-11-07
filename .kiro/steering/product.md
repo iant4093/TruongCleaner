@@ -38,7 +38,10 @@ cleaning", fake alerts, telemetry.
 - Looks native: standard SwiftUI components, system fonts and colors, glass on
   controls only. See `docs/UI.md`.
 - Plain words. Each row says what it is and what happens if removed.
-- Honest numbers: sizes are allocated bytes on disk; estimates say "about";
-  after a clean, show the real change in free space.
+- Honest numbers: item sizes are allocated bytes on disk; estimates say "about"
+  and show "at least" the private (clone-unshared) size; after a clean, show the
+  real change in free space. Volume accounting (Overview categories, System Data
+  "Unexplained") sums **private** bytes so APFS clones are not counted twice
+  (approved 2026-11-06, task 4.6).
 - Every skipped item says why ("Slack is open", "Needs Full Disk Access").
 - The app does nothing in the background unless the user starts it.

@@ -261,3 +261,16 @@ reach `main` through the `integration` branch and a pull request (CI runs on the
   "Unexplained" because the System Data page does not yet add the user-file
   categories (caches, Documents, apps) that Smart Clean and Space Lens measure.
   Follow-up 4.6: feed Overview/System Data with home-folder category totals.
+
+### Task 4.6 review (2026-11-06)
+
+`CategoryScanner` walks each home child once (`~/Library` once at depth 3 with
+seven carve-outs subtracted), ≤ 8 walker threads. `tcbench categories $HOME`
+(agent shell, no FDA): 20.06 s, 25.4 MB peak, ~1.2 M files. Allocated sum 1.49 TB
+vs private sum 703 GB on an 830 GB-used volume: `~/Desktop` holds ~900k files in
+cloned worktrees (1.18 TB allocated, 419 GB private). Accepted: volume accounting
+uses private bytes (`product.md` updated). Known limits: hard links across
+top-level folders count once per folder; purgeable may overlap cached categories,
+so "Unexplained" can read slightly low. Merged main: lint 0 violations in 144 files,
+deletion-site PASS, package tests PASS, Debug and Release build (Release 4.1 MB),
+app launches.
