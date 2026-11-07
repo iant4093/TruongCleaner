@@ -68,7 +68,8 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 4.3 | B | c | `OwnerCommand` runner + `dev.simUnavailable`, `dev.simDevices`, `dev.simRuntimes`, `dev.homebrew`, `dev.pnpm`, `dev.go*`, `dev.dockerDangling` (tests use fake executables in fixtures) | CLEAN-07 |
 | [x] | 4.4 | B | | Mail, iOS, installers rules | RULE-01 |
 | [x] | 4.5 | B | | Developer page with simulators table and project folders | UI-02 |
-| [ ] | 4.6 | I | | System Data page vs System Settings ✋ | — |
+| [ ] | 4.6 | B | | Overview and System Data: add measured home categories (Applications, Documents, Downloads, Library caches, Developer, iOS backups) so "Unexplained" shrinks to the real remainder | SYS-03 |
+| [ ] | 4.7 | I | | System Data page vs System Settings ✋ | — |
 
 ## Wave 5: Large files, Space Lens, Settings, Access
 
@@ -93,6 +94,6 @@ brief in `docs/briefs/<id>.md`.
 |---|---|---|---|---|---|
 | [x] | 7.1 | B | a | Onboarding sheet + FDA flow | PERM-02 |
 | [x] | 7.2 | B | b | Accessibility pass: labels, keyboard, Reduce Transparency, Increase Contrast, Reduce Motion | UI-04, UI-05, UI-07 |
-| [~] | 7.3 | B | c | App icon (Icon Composer), screenshots in `docs/screenshots/` (webp) | — |
+| [x] | 7.3 | B | c | App icon (Icon Composer), screenshots in `docs/screenshots/` (webp) | — |
 | [ ] | 7.4 | O | | Final README, release notes, v1.0.0 | — |
 | [ ] | 7.5 | I | | Full hand test on Ian's Mac ✋ | — |

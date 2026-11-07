@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/screenshots/icon.png" width="96" alt="TruongCleaner app icon">
+
 # TruongCleaner
 
 A lightweight native Mac app that shows what is really inside "System Data" and frees space safely.
@@ -27,6 +29,43 @@ parts no app may touch.
 
 > **Status:** pre-release. Every push to `main` that passes CI publishes a build.
 > The app works end to end; hand testing on more Macs is still in progress.
+
+## Screenshots
+
+Release build on macOS 27, 1100 × 720 window, Light appearance.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/overview.webp" width="100%" alt="Overview page with a storage bar for Macintosh HD, storage details and a Scan recommendation">
+      <p align="center"><sub><b>Overview</b> · storage bar, purgeable space, snapshots and swap</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/smartclean.webp" width="100%" alt="Smart Clean results grouped by category with checkboxes, sizes and a floating Clean bar">
+      <p align="center"><sub><b>Smart Clean</b> · grouped results, Review items unchecked</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/systemdata.webp" width="100%" alt="System Data page with a breakdown bar and rows for snapshots, purgeable space, Spotlight, swap and Apple Intelligence assets">
+      <p align="center"><sub><b>System Data</b> · what macOS hides, and the sanctioned fix for each</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/developer.webp" width="100%" alt="Developer page with Xcode build data and a table of simulators">
+      <p align="center"><sub><b>Developer</b> · Xcode data, simulators, package caches</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/spacelens.webp" width="100%" alt="Space Lens sunburst of the Developer folder with a list of its largest children">
+      <p align="center"><sub><b>Space Lens</b> · sunburst with drill-down</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/settings.webp" width="100%" alt="Settings window, General tab, with delete mode and update check options">
+      <p align="center"><sub><b>Settings</b> · delete mode, exclusions, rules, permissions</sub></p>
+    </td>
+  </tr>
+</table>
 
 ## Features
 

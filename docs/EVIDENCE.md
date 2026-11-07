@@ -236,3 +236,28 @@ app builds and launches.
 
 Process note: from this point the host policy blocks `git push` to `main`; changes
 reach `main` through the `integration` branch and a pull request (CI runs on the PR).
+
+### Tasks 4.5, 7.1, 7.3, 4.5b review (2026-11-06)
+
+- 4.5 Developer page (Xcode rows, simulator devices and runtimes tables, package
+  managers, Docker, project folders); 4.5b records owner-command runs in history
+  and shows them on the History page, adds `dev.simCaches`, and moves row logic
+  into a tested `CommandRowState`.
+- 7.1 onboarding sheet, real Overview recommendations, "Full Disk Access changed —
+  Scan again" banners, ⌘R on every scanning page, Reduce Transparency/Motion and
+  spoken sizes.
+- 7.3 Icon Composer `.icon` app icon (compiles to `AppIcon.icns` + `Assets.car`,
+  `CFBundleIconName` set) and six README screenshots (34–116 KB WebP). Orchestrator
+  reviewed every screenshot for personal data: only cache folder names, simulator
+  names and `~/Library/Developer` appear.
+- **Size fix (orchestrator):** Release builds were not stripped (6.2 MB executable;
+  2.85 MB after `strip -x`). Release now sets `DEPLOYMENT_POSTPROCESSING`,
+  `STRIP_INSTALLED_PRODUCT`, `STRIP_STYLE = all`. Release app **4.0 MB**
+  (REQ-PERF-06 < 5 MB met); ZIP 2.4 MB, DMG 2.8 MB; binary UUID still matches the dSYM.
+- Smart Clean on Ian's Mac (read-only scan, 12.6 s): App caches 166.27 GB. Largest
+  child folders by `du`: `~/Library/Caches/app.truongroom.TruongRoom.build` 111.2 GB,
+  `org.python.python` 29.9 GB, `com.apple.dt.xctest.tool` 8.6 GB. Not cleaned.
+- System Data on Ian's Mac: 91.04 GB of 830.4 GB accounted for; 739.37 GB
+  "Unexplained" because the System Data page does not yet add the user-file
+  categories (caches, Documents, apps) that Smart Clean and Space Lens measure.
+  Follow-up 4.6: feed Overview/System Data with home-folder category totals.
