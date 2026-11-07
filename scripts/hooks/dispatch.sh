@@ -29,7 +29,7 @@ for id in "$@"; do
   rm -f "build/dispatch/$id.done"
   (
     cd "$dir" || exit 1
-    kiro-cli chat --v3 --agent builder-sonnet --no-interactive "${extra[@]}" \
+    kiro-cli chat --v3 --agent builder-sonnet --no-interactive ${extra[@]+"${extra[@]}"} \
       --trust-tools=fs_read,fs_write,shell,execute_bash,grep,glob \
       "$(cat "$brief")" > "$ROOT/build/dispatch/$id.log" 2>&1
     echo $? > "$ROOT/build/dispatch/$id.done"
