@@ -58,7 +58,8 @@ struct OverviewPage: View {
                 symbol: Page.overview.symbol,
                 color: Page.overview.color,
                 title: data.volumeName,
-                subtitle: data.subtitle
+                subtitle: data.subtitle,
+                spokenSubtitle: data.spokenSubtitle
             )
             StorageBar(segments: data.segments, total: data.volume.total)
         }
@@ -67,6 +68,7 @@ struct OverviewPage: View {
             detailRow(
                 "Purgeable",
                 value: data.purgeableText,
+                spoken: SpokenSize.string(data.volume.purgeable),
                 info: "Space macOS frees on its own when an app needs room, such as caches and "
                     + "local snapshots. TruongCleaner works it out as the space available for "
                     + "important files minus the space available right now."
@@ -81,36 +83,59 @@ struct OverviewPage: View {
             detailRow(
                 "Swap in use",
                 value: data.swapText,
+                spoken: data.swap.map { SpokenSize.string($0.used) },
                 info: "Disk space macOS uses when memory runs short. The number comes from the "
                     + "system. Quitting apps that use a lot of memory, or restarting, reduces it."
             )
             detailRow(
                 "Available for important data",
                 value: data.importantAvailableText,
+                spoken: SpokenSize.string(data.volume.availableForImportantUsage),
                 info: "Free space plus purgeable space. This is the amount Finder and System Settings "
                     + "show as available. It comes from the volume's capacity values."
             )
         }
     }
 
-    private func detailRow(_ title: String, value: String, info: String) -> some View {
+    private func detailRow(_ title: String, value: String, spoken: String? = nil, info: String) -> some View {
         LabeledContent(title) {
             HStack(spacing: 6) {
                 Text(value)
+                    .accessibilityLabel(spoken ?? value)
                 InfoButton(subject: title, text: info)
             }
         }
     }
 
     private var recommendations: some View {
-        Section("Recommendations") {
-            HStack(spacing: 10) {
-                IconTile(symbol: Page.smartClean.symbol, color: Page.smartClean.color)
-                Text("Run Smart Clean to see what can be freed")
-                Spacer()
-                Button("Review…") {}
-                    .disabled(true)
+        let snapshots: OverviewData.SnapshotSummary? = if case .loaded(let data) = model.state {
+            data.snapshots
+        } else {
+            nil
+        }
+        return Section("Recommendations") {
+            ForEach(RecommendationBuilder.build(smartClean: appModel.smartClean, snapshots: snapshots)) { item in
+                HStack(spacing: 10) {
+                    IconTile(symbol: item.symbol, color: item.color)
+                    Text(item.text)
+                        .accessibilityLabel(item.spokenText)
+                    Spacer(minLength: 8)
+                    Button(item.buttonTitle) { perform(item.action) }
+                        .accessibilityLabel(item.buttonLabel)
+                }
+                .accessibilityElement(children: .contain)
             }
+        }
+    }
+
+    private func perform(_ action: Recommendation.Action) {
+        switch action {
+        case .open(let page):
+            appModel.selection = page
+        case .startSmartClean:
+            // The user pressed the button. Nothing here runs by itself.
+            appModel.smartClean.scan()
+            appModel.selection = .smartClean
         }
     }
 }

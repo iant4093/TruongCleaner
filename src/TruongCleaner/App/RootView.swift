@@ -3,9 +3,11 @@ import SwiftUI
 /// The main window: sidebar of pages and a detail column.
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("onboardingDone") private var onboardingDone = false
     @State private var searchText = ""
 
     var body: some View {
+        @Bindable var model = model
         NavigationSplitView {
             SidebarView(selection: selection, searchText: searchText)
                 .navigationSplitViewColumnWidth(min: 215, ideal: 230, max: 260)
@@ -14,6 +16,13 @@ struct RootView: View {
         }
         .searchable(text: $searchText, placement: .sidebar, prompt: "Search")
         .frame(minWidth: 760, minHeight: 520)
+        .sheet(isPresented: $model.isOnboardingPresented, onDismiss: { onboardingDone = true }) {
+            OnboardingSheet()
+        }
+        .task {
+            // Once, on the first launch. Help > Welcome to TruongCleaner shows it again.
+            if !onboardingDone { model.isOnboardingPresented = true }
+        }
     }
 
     /// `List(selection:)` needs an optional binding. A cleared selection is ignored.

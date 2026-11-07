@@ -23,6 +23,12 @@ struct OverviewData {
             + "\(ByteFormatter.string(volume.available)) available"
     }
 
+    /// ``subtitle`` with sizes written out for VoiceOver.
+    var spokenSubtitle: String {
+        "\(SpokenSize.string(volume.containerUsed)) of \(SpokenSize.string(volume.total)) used, "
+            + "\(SpokenSize.string(volume.available)) available"
+    }
+
     var purgeableText: String { ByteFormatter.string(volume.purgeable) }
 
     var importantAvailableText: String { ByteFormatter.string(volume.availableForImportantUsage) }

@@ -15,6 +15,7 @@ struct TruongCleanerApp: App {
                 .modifier(ActivationChecks(model: model))
         }
         .defaultSize(width: 900, height: 620)
+        .commands { WelcomeCommands(model: model) }
 
         Settings {
             SettingsView()
@@ -35,6 +36,19 @@ private struct ActivationChecks: ViewModifier {
             guard scenePhase == .active else { return }
             await model.refreshAccess()
             await model.updates.checkIfDue()
+        }
+    }
+}
+
+/// Help > Welcome to TruongCleaner shows the welcome sheet again.
+private struct WelcomeCommands: Commands {
+    let model: AppModel
+
+    var body: some Commands {
+        CommandGroup(replacing: .help) {
+            Button("Welcome to TruongCleaner") {
+                model.isOnboardingPresented = true
+            }
         }
     }
 }

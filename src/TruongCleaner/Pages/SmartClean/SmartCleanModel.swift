@@ -64,6 +64,10 @@ final class SmartCleanModel {
     /// How long the last scan took.
     private(set) var scanDuration: Duration?
 
+    /// True when Full Disk Access was granted after this scan began (REQ-PERM-03). The page offers a
+    /// new scan; it never starts one by itself.
+    private(set) var accessChangedSinceScan = false
+
     /// What Put Back and Free Space Now did for the clean on screen, in plain words.
     private(set) var followUpNotes: [String] = []
 
@@ -221,6 +225,14 @@ final class SmartCleanModel {
         scanTask = Task { await runScan() }
     }
 
+    /// Marks the results on screen, or the scan in progress, as measured before Full Disk Access was granted.
+    func noteAccessGranted() {
+        switch state {
+        case .scanning, .results: accessChangedSinceScan = true
+        case .idle, .cleaning, .finished: break
+        }
+    }
+
     /// Stops a running scan within about 100 ms and keeps what was found so far.
     func stopScan() {
         scanTask?.cancel()
@@ -305,6 +317,7 @@ final class SmartCleanModel {
         scanRules = []
         scanWasPartial = false
         scanDuration = nil
+        accessChangedSinceScan = false
         followUpNotes = []
         restoredFindingIDs = []
         revision += 1

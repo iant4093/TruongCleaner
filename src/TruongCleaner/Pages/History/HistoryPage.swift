@@ -140,7 +140,7 @@ struct HistoryPage: View {
             .width(min: 120, ideal: 200)
 
             TableColumn("Size") { row in
-                Text(ByteFormatter.string(row.bytes)).monospacedDigit()
+                SizeText(bytes: row.bytes)
             }
             .width(min: 60, ideal: 80)
             .alignment(.numeric)
@@ -201,6 +201,7 @@ private struct CleanRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(clean.estimateText)
                     .monospacedDigit()
+                    .accessibilityLabel("about \(SpokenSize.string(clean.estimatedFreedBytes))")
                     .help("Estimated space freed: what only these items used, not shared with copies")
                 if let measured = clean.measuredText {
                     Text("Free space \(measured)")
