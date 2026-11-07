@@ -100,7 +100,7 @@ same as Finder.
 
 | Type | Job |
 |---|---|
-| `BulkWalker` | Reads one directory with `getattrlistbulk` into a reusable buffer; yields `RawEntry` (name bytes, type, device, fileID, flags, link count, alloc size, mod date). Opens children with `openat` relative to the parent fd. Never follows links (`O_NOFOLLOW`). |
+| `BulkWalker` | Reads one directory with `getattrlistbulk` into a reusable buffer; yields `RawEntry` (name bytes, type, fsid, fileID, flags, link count, alloc size, private size `ATTR_CMNEXT_PRIVATESIZE`, mod date). Opens children with `openat` relative to the parent fd. Never follows links (`O_NOFOLLOW`). Volume boundary = `ATTR_CMN_FSID` change (S1: `st_dev` is the same for System and Data). Chosen by S1: 7.3× faster than `du`, ~13 MB peak. |
 | `WalkPool` | Bounded worker pool over a work queue of directory fds/paths; stops on device change; cooperative cancellation. |
 | `SizeAccumulator` | Per-root and per-folder totals to a depth; hard-link set only for `linkCount > 1`; top-N heap. |
 | `ScanEngine` (actor) | Expands rules, runs walks, applies `Matcher`, emits `ScanEvent`s. |

@@ -1,0 +1,29 @@
+# Correctness checks; compiler warnings and strict concurrency are separate gates.
+included:
+  - src
+  - Packages/CleanerKit/Sources
+excluded:
+  - Packages/CleanerKit/Tests
+  - Packages/CleanerKit/Sources/tcbench
+only_rules:
+  - compiler_protocol_init
+  - discarded_notification_center_observer
+  - duplicate_enum_cases
+  - duplicate_imports
+  - duplicated_key_in_dictionary_literal
+  - force_cast
+  - force_try
+  - force_unwrapping
+  - notification_center_detachment
+  - prohibited_super_call
+  - return_value_from_void_function
+  - unneeded_break_in_switch
+  - weak_delegate
+  - custom_rules
+custom_rules:
+  no_print:
+    name: "No print in shipping code"
+    regex: '(^|[^.\w])(print|debugPrint|dump)\('
+    message: "Use os.Logger with privacy markers instead of print."
+    severity: error
+strict: true

@@ -1,0 +1,163 @@
+name: CI and app release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  quality:
+    name: Workflow and secret checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: actionlint, shellcheck, zizmor and Gitleaks
+        run: bash scripts/check-workflows.sh
+      - name: Initialize workflow CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: actions
+          build-mode: none
+      - name: CodeQL workflow analysis
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:actions
+
+  logic:
+    name: SwiftLint, safety checks and package tests
+    runs-on: xcode-27
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: SwiftLint
+        run: bash scripts/lint.sh
+      - name: Deletion call sites stay inside CleanerActions
+        run: bash scripts/check-deletion-sites.sh
+      - name: CleanerKit tests (Swift Testing)
+        run: bash scripts/test.sh package
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: package-test-logs
+          path: build/logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  app:
+    name: App build, analysis and packaging
+    runs-on: xcode-27
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify Xcode and SDK
+        run: |
+          xcodebuild -version
+          sdk="$(xcrun --sdk macosx --show-sdk-version)"
+          echo "macOS SDK $sdk"
+          test "${sdk%%.*}" -ge 27
+          printf 'TRUONGCLEANER_BUILD_NUMBER=%s\n' "$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+      - name: Debug and Release builds
+        run: bash scripts/build.sh all
+      - name: Xcode static analysis
+        run: |
+          mkdir -p build/logs
+          xcodebuild -project TruongCleaner.xcodeproj -scheme TruongCleaner \
+            -configuration Debug -destination 'generic/platform=macOS' \
+            -derivedDataPath build/AnalysisDerivedData CODE_SIGNING_ALLOWED=NO \
+            analyze > build/logs/analyze.log 2>&1 || { tail -60 build/logs/analyze.log; exit 1; }
+          # Source warnings only; tool notices such as appintentsmetadataprocessor are not code.
+          if grep -Eq '\.swift:[0-9]+:[0-9]+: warning:' build/logs/analyze.log; then
+            grep -E '\.swift:[0-9]+:[0-9]+: warning:' build/logs/analyze.log | sort -u | head -40
+            exit 1
+          fi
+      - name: Sign, verify and package
+        run: bash scripts/package.sh
+      - name: Attest release artifacts
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: dist/*
+      - name: Upload release candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-candidate
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: app-build-logs
+          path: build/logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  release:
+    name: Publish latest build
+    needs: [quality, logic, app]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-candidate
+          path: dist
+      - name: Publish verified build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          sha256sum --check SHA256SUMS
+          head_sha="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)"
+          if [ "$head_sha" != "$GITHUB_SHA" ]; then
+            echo 'A newer commit is on main; its successful build will publish instead.'
+            exit 0
+          fi
+          tag="build-$GITHUB_RUN_NUMBER"
+          build="$((1000 + GITHUB_RUN_NUMBER))"
+          if gh release view "$tag" --json isDraft --jq .isDraft > existing-draft 2>/dev/null; then
+            if [ "$(cat existing-draft)" = false ]; then
+              echo 'This run already published its release.'
+              exit 0
+            fi
+          else
+            gh release create "$tag" --draft --target "$GITHUB_SHA" \
+              --title "TruongCleaner · Build $build" \
+              --notes "Built from $GITHUB_SHA after SwiftLint, safety checks, package tests, Xcode static analysis and workflow security checks. Install with: curl -fsSL https://github.com/$GH_REPO/releases/latest/download/install.sh | sh. The app is ad-hoc signed (not notarized). If you use the DMG instead, open the app once, then choose System Settings > Privacy & Security > Open Anyway. Checksums and matching crash symbols are attached."
+          fi
+          gh release upload "$tag" TruongCleaner.dmg TruongCleaner.zip install.sh TruongCleaner.dSYM.zip SHA256SUMS --clobber
+          gh release edit "$tag" --draft=false --latest

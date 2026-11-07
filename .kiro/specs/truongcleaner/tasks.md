@@ -11,12 +11,12 @@ brief in `docs/briefs/<id>.md`.
 
 | ✓ | ID | Owner | Par | Task | Output |
 |---|---|---|---|---|---|
-| [ ] | 0.1 | O | | Confirm builder dispatch: no-op brief, check hooks fire (S8) | `docs/EVIDENCE.md` S8 |
-| [ ] | 0.2 | B | a | S1 walker benchmark: `spikes/s1-walker/` SwiftPM exe; `getattrlistbulk` vs `FileManager.enumerator` (prefetched keys) vs `fts`, 1 and N workers, on `~/Library` and `/System/Volumes/Data` (read-only); compare with `du -sk` | Table: files/s, wall time, peak RSS, total bytes vs `du` |
-| [ ] | 0.3 | B | b | S3 Trash behavior: `spikes/s3-trash/` on a fixture folder in `spikes/s3-trash/out/`; `trashItem` vs `NSWorkspace.recycle`; collisions; 10k items timing; record resulting URLs | Recommendation + numbers |
-| [ ] | 0.4 | B | c | S4 volume numbers: `spikes/s4-volume/` prints every capacity key, `statfs`, `ATTR_VOL_SPACEUSED`, `tmutil listlocalsnapshots /`, `diskutil apfs list -plist` summary | Numbers; I compares with System Settings ✋ |
-| [ ] | 0.5 | B | d | S5 UI prototype: `spikes/s5-ui/` SwiftUI app with sidebar, icon tiles, grouped form, glass toolbar and clean bar; screenshots light/dark | Screenshots beside System Settings; I approves ✋ |
-| [ ] | 0.6 | B | e | S2 FDA probe app: `spikes/s2-fda/` reports each probe result and opens the deep link | I grants/revokes FDA, reports ✋ |
+| [x] | 0.1 | O | | Confirm builder dispatch: no-op brief, check hooks fire (S8) | `docs/EVIDENCE.md` S8 |
+| [x] | 0.2 | B | a | S1 walker benchmark: `spikes/s1-walker/` SwiftPM exe; `getattrlistbulk` vs `FileManager.enumerator` (prefetched keys) vs `fts`, 1 and N workers, on `~/Library` and `/System/Volumes/Data` (read-only); compare with `du -sk` | Table: files/s, wall time, peak RSS, total bytes vs `du` |
+| [~] | 0.3 | B | b | S3 Trash behavior: `spikes/s3-trash/` on a fixture folder in `spikes/s3-trash/out/`; `trashItem` vs `NSWorkspace.recycle`; collisions; 10k items timing; record resulting URLs | Recommendation + numbers |
+| [x] | 0.4 | B | c | S4 volume numbers: `spikes/s4-volume/` prints every capacity key, `statfs`, `ATTR_VOL_SPACEUSED`, `tmutil listlocalsnapshots /`, `diskutil apfs list -plist` summary | Numbers; I compares with System Settings ✋ |
+| [x] | 0.5 | B | d | S5 UI prototype: `spikes/s5-ui/` SwiftUI app with sidebar, icon tiles, grouped form, glass toolbar and clean bar; screenshots light/dark | Screenshots beside System Settings; I approves ✋ |
+| [x] | 0.6 | B | e | S2 FDA probe app: `spikes/s2-fda/` reports each probe result and opens the deep link | I grants/revokes FDA, reports ✋ |
 | [ ] | 0.7 | O | | S6 CI proof: minimal Xcode project + package on a scratch branch through `xcode-27`; record Xcode version used | CI log link |
 | [ ] | 0.8 | I | | S7 install proof: run `install.sh` from the scratch release and open the DMG path | Notes ✋ |
 | [ ] | 0.9 | O | | Update PLAN decisions D9, D12 and budgets P5 from spike results | PLAN diff |
@@ -25,10 +25,10 @@ brief in `docs/briefs/<id>.md`.
 
 | ✓ | ID | Owner | Par | Task | Reqs |
 |---|---|---|---|---|---|
-| [ ] | 1.1 | B | | Xcode project (objectVersion 77, synchronized groups), app target `TruongCleaner`, bundle ID `com.iant4093.TruongCleaner`, macOS 26.0, arm64, Swift 6, warnings as errors, links local `CleanerKit`; empty `NavigationSplitView` window with the sidebar from `docs/UI.md` §3 and `IconTile` | UI-01 |
-| [ ] | 1.2 | B | | `Packages/CleanerKit` skeleton: three library targets, `tcbench` exe, test targets, `Fixtures` helper (`FixtureTree`), one passing test per target | — |
-| [ ] | 1.3 | B | a | `scripts/`: `lint.sh` (pinned SwiftLint + checksum), `test.sh package`, `build.sh {debug,release,all}`, `package.sh` (ad-hoc sign, verify, DMG, ZIP, dSYM zip, SHA256SUMS), `install.sh`, `check-workflows.sh`, `check-deletion-sites.sh`, `clean.sh` (removes `build/` only) | DIST-01, DIST-03, SAFE-01 |
-| [ ] | 1.4 | O | a | `.github/workflows/ci.yml`, `dependabot.yml`, `actionlint.yaml`, `.swiftlint.yml`; SHA pins | CI-01..04, DIST-02 |
+| [x] | 1.1 | B | | Xcode project (objectVersion 77, synchronized groups), app target `TruongCleaner`, bundle ID `com.iant4093.TruongCleaner`, macOS 26.0, arm64, Swift 6, warnings as errors, links local `CleanerKit`; empty `NavigationSplitView` window with the sidebar from `docs/UI.md` §3 and `IconTile` | UI-01 |
+| [x] | 1.2 | B | | `Packages/CleanerKit` skeleton: three library targets, `tcbench` exe, test targets, `Fixtures` helper (`FixtureTree`), one passing test per target | — |
+| [~] | 1.3 | B | a | `scripts/`: `lint.sh` (pinned SwiftLint + checksum), `test.sh package`, `build.sh {debug,release,all}`, `package.sh` (ad-hoc sign, verify, DMG, ZIP, dSYM zip, SHA256SUMS), `install.sh`, `check-workflows.sh`, `check-deletion-sites.sh`, `clean.sh` (removes `build/` only) | DIST-01, DIST-03, SAFE-01 |
+| [x] | 1.4 | O | a | `.github/workflows/ci.yml`, `dependabot.yml`, `actionlint.yaml`, `.swiftlint.yml`; SHA pins | CI-01..04, DIST-02 |
 | [ ] | 1.5 | O | | README in TruongCam format; LICENSE; first push (after Q5) | — |
 | [ ] | 1.6 | I | | Install the first Latest release with `install.sh` ✋ | — |
 

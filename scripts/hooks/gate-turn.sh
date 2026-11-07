@@ -16,6 +16,8 @@ report=""
 run_step() {
   local name="$1"; shift
   [ -f "$1" ] || return 0            # script not created yet (early Wave 1)
+  # Agent sandbox: the compiler's macro plugin sandbox cannot nest (EVIDENCE).
+  export TC_XCODEBUILD_FLAGS="${TC_XCODEBUILD_FLAGS:-OTHER_SWIFT_FLAGS=-disable-sandbox}"
   local out
   if ! out="$(bash "$@" 2>&1)"; then
     report+="== $name FAILED ==\n$(printf '%s' "$out" | tail -30)\n"

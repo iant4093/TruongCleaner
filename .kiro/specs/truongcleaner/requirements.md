@@ -6,8 +6,8 @@ TruongCleaner.app; "the kit" means the CleanerKit package.
 ## Scanning (SCAN)
 
 - **REQ-SCAN-01** When the user starts a Smart Clean scan, the app shall scan every enabled rule's roots and show per-category sizes as they are found.
-- **REQ-SCAN-02** The scanner shall report allocated size on disk and count each hard-linked file once per `(device, fileID)`.
-- **REQ-SCAN-03** The scanner shall not follow symbolic links and shall not cross into a different device ID than the scan root.
+- **REQ-SCAN-02** The scanner shall report allocated size on disk and private (clone-unshared) size, and count each hard-linked file once per `(fsid, fileID)`. Space-to-be-freed estimates shall use private size.
+- **REQ-SCAN-03** The scanner shall not follow symbolic links and shall not cross into a different file system (`fsid`, not `st_dev`; S1 showed System and Data share `st_dev`) than the scan root.
 - **REQ-SCAN-04** When a directory returns `EPERM` or `EACCES`, the scanner shall record it as "needs access" with its path and shall not report it as zero bytes.
 - **REQ-SCAN-05** When the user presses Stop, the scanner shall stop within 100 ms and keep the partial results, marked as partial.
 - **REQ-SCAN-06** The scanner shall use at most `min(8, activeProcessorCount)` concurrent workers.

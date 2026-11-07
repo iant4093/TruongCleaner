@@ -46,6 +46,7 @@ if printf '%s' "$cmd" | grep -Eq '(^|[;&|[:space:]])rm[[:space:]]+-[a-zA-Z]*[rR]
     case "$t" in
       -*) continue ;;
       build|build/*|./build|./build/*|"$HOOK_ROOT"/build|"$HOOK_ROOT"/build/*) ;;
+      .build|./.build|spikes/*/.build|Packages/*/.build|"$HOOK_ROOT"/spikes/*/.build|"$HOOK_ROOT"/Packages/*/.build) ;;
       spikes/*/out|spikes/*/out/*|"$HOOK_ROOT"/spikes/*/out|"$HOOK_ROOT"/spikes/*/out/*) ;;
       *) deny "recursive rm outside build/ or spikes/*/out/: $t" ;;
     esac

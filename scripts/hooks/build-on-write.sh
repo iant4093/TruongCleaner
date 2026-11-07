@@ -11,7 +11,9 @@ case "$rel" in
   *) exit 0 ;;
 esac
 [ -f "$PACKAGE_DIR/Package.swift" ] || exit 0
-out="$(swift build --package-path "$PACKAGE_DIR" --scratch-path "$HOOK_ROOT/build/swiftpm" 2>&1)"
+# --disable-sandbox: SwiftPM's manifest sandbox cannot nest inside the agent sandbox
+# (EVIDENCE S8/S2/S4). It only turns off SwiftPM's own manifest/plugin sandbox.
+out="$(swift build --disable-sandbox --package-path "$PACKAGE_DIR" --scratch-path "$HOOK_ROOT/build/swiftpm" 2>&1)"
 status=$?
 hook_log "build-on-write $rel exit=$status"
 if [ $status -ne 0 ]; then
