@@ -20,6 +20,8 @@ final class AppModel {
     let spaceLens = SpaceLensModel()
     /// Data for the Smart Clean page.
     let smartClean: SmartCleanModel
+    /// Data for the Developer page.
+    let developer: DeveloperModel
 
     /// Data for the Trash page.
     let trash: TrashModel
@@ -46,6 +48,7 @@ final class AppModel {
         let services = Services()
         self.services = services
         self.smartClean = SmartCleanModel(settings: settings, services: services)
+        self.developer = DeveloperModel(settings: settings, services: services)
         self.trash = TrashModel(services: services, settings: settings)
         self.cleanHistory = HistoryModel(services: services)
     }
@@ -69,6 +72,13 @@ final class AppModel {
                 isRunning: model.isScanning,
                 isEnabled: model.isScanning || model.canScan,
                 perform: { model.isScanning ? model.stopScan() : model.scan() }
+            )
+        case .developer:
+            let model = developer
+            return ToolbarScan(
+                isRunning: model.files.isScanning,
+                isEnabled: model.files.isScanning || model.canScan,
+                perform: { model.files.isScanning ? model.files.stopScan() : model.scan() }
             )
         default:
             return nil
