@@ -25,8 +25,11 @@ checks below. See `.kiro/specs/truongcleaner/tasks.md`.
 
 The host policy blocks `git push` to `main` from this session (it was allowed
 earlier). Flow: commit on local `main`, `git branch -f integration main`,
-`git push origin integration` (as its own command), open a PR to `main`, merge it
-with `gh pr merge <n> --merge` once CI is green, then `git merge --ff-only origin/main`.
+`git push -v origin refs/heads/integration:refs/heads/integration` (as its own
+command; it sometimes reports "Everything up-to-date" without updating the remote,
+so check `git ls-remote origin refs/heads/integration` and repeat once), wait ~20 s,
+open a PR to `main`, merge it with `gh pr merge <n> --merge` once CI is green, then
+`git merge origin/main`.
 
 ## Waiting on Ian (hand checks ✋)
 
