@@ -12,14 +12,14 @@ enum PatternComponent: Sendable, Equatable {
 
 /// A small path glob: literal names, `*` inside a component, `**` for any depth,
 /// and a leading `~` for the home folder. Matching is case-insensitive.
-struct GlobPattern: Sendable {
+public struct GlobPattern: Sendable {
     let components: [PatternComponent]
 
     /// Parses a pattern such as `~/Library/Caches/com.apple.Spotlight*/**`.
     ///
     /// - Parameter home: Components of the home folder. `~` as the first
     ///   component expands to them. Pass nil for patterns relative to a rule root.
-    init(_ text: String, home: [String]? = nil) {
+    public init(_ text: String, home: [String]? = nil) {
         var parts: [PatternComponent] = []
         let pieces = text.split(separator: "/", omittingEmptySubsequences: true)
         for (index, piece) in pieces.enumerated() {
@@ -37,8 +37,11 @@ struct GlobPattern: Sendable {
         components = parts
     }
 
-    /// Whether the pattern matches the whole path. `path` must already be folded.
-    func matches(_ path: [String]) -> Bool {
+    /// Whether the pattern matches the whole path.
+    ///
+    /// Each component of `path` must already be folded for comparison:
+    /// canonically composed (NFC) and lowercased, as the pattern's own names are.
+    public func matches(_ path: [String]) -> Bool {
         Self.match(components[...], path[...])
     }
 

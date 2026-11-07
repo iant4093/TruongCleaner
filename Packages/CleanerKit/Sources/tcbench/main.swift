@@ -98,6 +98,8 @@ case "volume":
     await VolumeCommand.run()
 case "walk":
     await runWalk(Array(arguments.dropFirst()))
+case "scan-demo":
+    await ScanDemoCommand.run(Array(arguments.dropFirst()))
 case nil, "-h", "--help", "help":
     print(usage)
 default:

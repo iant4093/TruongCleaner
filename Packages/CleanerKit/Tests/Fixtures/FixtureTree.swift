@@ -191,9 +191,16 @@ public struct FixtureTree: Sendable {
         if let override = ProcessInfo.processInfo.environment["TC_FIXTURE_ROOT"], !override.isEmpty {
             return URL(filePath: override, directoryHint: .isDirectory)
         }
-        // <repo>/Packages/CleanerKit/Tests/Fixtures/FixtureTree.swift
-        var repo = URL(filePath: String(describing: filePath))
-        for _ in 0..<5 { repo.deleteLastPathComponent() }
+        // The caller's file is somewhere below <repo>/Packages/CleanerKit/Tests/, at any depth.
+        // Find that folder from the path instead of counting levels.
+        let file = URL(filePath: String(describing: filePath))
+        var repo = file
+        let parts = file.pathComponents
+        if let index = parts.indices.last(where: { parts[$0] == "Packages" && $0 + 1 < parts.count && parts[$0 + 1] == "CleanerKit" }) {
+            repo = URL(filePath: "/" + parts[1..<index].joined(separator: "/"), directoryHint: .isDirectory)
+        } else {
+            for _ in 0..<5 { repo.deleteLastPathComponent() }
+        }
         return repo.appending(path: "build/test-fixtures", directoryHint: .isDirectory)
     }
 
