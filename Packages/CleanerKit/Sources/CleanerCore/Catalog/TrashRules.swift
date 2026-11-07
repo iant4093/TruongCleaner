@@ -9,9 +9,8 @@ enum TrashRules {
 
     /// Each child of `~/.Trash`.
     ///
-    /// `Action` has no "permanent delete" case, so the action is `.trash`. Moving an item that
-    /// is already in the Trash is meaningless: the executor must treat this rule as
-    /// permanent-delete only, behind the explicit confirmation in `safety.md` rule 11.
+    /// Moving an item that is already in the Trash is meaningless, so the action is
+    /// `.deletePermanently`, behind the explicit confirmation in `safety.md` rule 11.
     static let trashUser = Rule(
         id: "trash.user",
         category: .trash,
@@ -19,7 +18,7 @@ enum TrashRules {
         roots: [.home([".Trash"])],
         match: .children,
         access: .fda,
-        action: .trash,
+        action: .deletePermanently,
         title: "Trash",
         explain: "Files you already deleted. Emptying cannot be undone."
     )
@@ -46,7 +45,8 @@ enum TrashRules {
     /// The catalog root is `/Volumes/*/.Trashes/<uid>`, where `<uid>` is the current user's ID.
     /// `RootSpec` has no user ID component. The closest root without it would include other
     /// users' trash folders, which is broader, so the root stops at `.Trashes` and the rule only
-    /// measures until the model gains a user-ID base.
+    /// measures until the model gains a user-ID base. The action is `.deletePermanently`, as for
+    /// `trash.user`.
     static let trashVolumes = Rule(
         id: "trash.volumes",
         category: .trash,
@@ -54,7 +54,7 @@ enum TrashRules {
         roots: [.absolute(["Volumes", "*", ".Trashes"])],
         match: .measureOnly,
         access: .user,
-        action: .trash,
+        action: .deletePermanently,
         title: "Trash on external drives",
         explain: "Trash on external drives."
     )

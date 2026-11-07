@@ -15,8 +15,8 @@ public enum OwnerState: Sendable, Hashable {
 public protocol RunningAppsProvider: Sendable {
     /// The state of `owner` for the item about to be removed.
     ///
-    /// The gate resolves `OwnerSpec.childNameAsBundleID` into `.bundleID` before asking,
-    /// so providers normally see only `.bundleID` and `.processName`.
+    /// The gate resolves `OwnerSpec.childNameAsBundleID` and `.rootSegmentAsBundleID` into
+    /// `.bundleID` before asking, so providers normally see only `.bundleID` and `.processName`.
     func state(of owner: OwnerSpec, for item: URL) async -> OwnerState
 }
 
@@ -39,6 +39,11 @@ public struct GateContext: Sendable {
     public var runningApps: any RunningAppsProvider
     /// Open-file liveness.
     public var openFiles: any OpenFilesProvider
+    /// Owners that a root adds for items under it, keyed by the root as it was scanned.
+    ///
+    /// The gate also reads `RootSpec.owners` from the rule itself, so a context that leaves this
+    /// empty is still safe. Entries here are added to those, never in place of them.
+    public var rootOwners: [URL: [OwnerSpec]]
     /// True only for rule `installers.macOS`: the whole `.app` may be removed, never anything inside it.
     public var allowWholeBundle: Bool
 
@@ -49,7 +54,8 @@ public struct GateContext: Sendable {
         expandedRoots: [URL],
         runningApps: any RunningAppsProvider,
         openFiles: any OpenFilesProvider,
-        allowWholeBundle: Bool = false
+        allowWholeBundle: Bool = false,
+        rootOwners: [URL: [OwnerSpec]] = [:]
     ) {
         self.environment = environment
         self.policy = policy
@@ -57,5 +63,6 @@ public struct GateContext: Sendable {
         self.runningApps = runningApps
         self.openFiles = openFiles
         self.allowWholeBundle = allowWholeBundle
+        self.rootOwners = rootOwners
     }
 }

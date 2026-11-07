@@ -47,6 +47,10 @@ public struct RuleResult: Sendable {
     public let needsAccess: [URL]
     /// Roots that do not exist, or are not real folders. Not an error. At most 50.
     public let missingRoots: [URL]
+    /// Folders the rule leaves out on purpose (`Guards.excludeRootSegments`): the folder that a `*`
+    /// of a root stood for, such as `Containers/com.apple.Notes`. They are not opened or walked and
+    /// their size is not counted. At most 50.
+    public let excludedRoots: [URL]
     /// True when the scan was stopped, or a root could not be fully read for a reason other than permission.
     /// Sizes are then incomplete. Items whose age mattered were not offered.
     public let partial: Bool
@@ -62,6 +66,7 @@ public struct RuleResult: Sendable {
         measuredPrivateBytes: Int64,
         needsAccess: [URL],
         missingRoots: [URL],
+        excludedRoots: [URL] = [],
         partial: Bool,
         duration: Duration
     ) {
@@ -72,6 +77,7 @@ public struct RuleResult: Sendable {
         self.measuredPrivateBytes = measuredPrivateBytes
         self.needsAccess = needsAccess
         self.missingRoots = missingRoots
+        self.excludedRoots = excludedRoots
         self.partial = partial
         self.duration = duration
     }

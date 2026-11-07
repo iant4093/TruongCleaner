@@ -25,7 +25,7 @@ enum CachesRules {
         roots: [.home(["Library", "Caches"])],
         match: .children,
         guards: Guards(
-            owners: [.childNameAsBundleID],
+            owners: [.childNameAsBundleID(stripSuffix: nil)],
             excludeNames: ["Google", "Firefox", "BraveSoftware", "Chromium", "Microsoft Edge", "Vivaldi"]
         ),
         access: .user,
@@ -34,35 +34,42 @@ enum CachesRules {
         explain: "Apps keep temporary copies here and rebuild them."
     )
 
-    /// Placeholder. Offers nothing yet.
+    /// Apple's own containers and shared groups are never cleaned. The patterns are matched
+    /// against the folder name that the `*` of the root stands for.
+    static let appleContainerNames = ["com.apple.*", "group.com.apple.*", "*.com.apple.*", "systemgroup.*"]
+
+    /// Each child of the `Data/Library/Caches` folder of a third-party App Store app's container.
     ///
-    /// The catalog says to skip `com.apple.*` containers and to check that the container's app
-    /// is closed. Both depend on the container folder name, which is a wildcard segment of the
-    /// root. `Guards.excludeNames` only sees names below the root and matches them exactly, and
-    /// `OwnerSpec.childNameAsBundleID` reads the name of the item, not of the container. So the
-    /// real rule would be broader than the catalog. `.measureOnly` makes the matcher offer
-    /// nothing until the model can express those two guards.
+    /// Containers whose name matches `appleContainerNames` are left out. The container's name
+    /// is the app's bundle ID, so the app must be closed (`rootSegmentAsBundleID`, index 2).
     static let userContainerCaches = Rule(
         id: "user.containerCaches",
         category: .caches,
         tier: .safe,
         roots: [.home(["Library", "Containers", "*", "Data", "Library", "Caches"])],
-        match: .measureOnly,
+        match: .children,
+        guards: Guards(
+            owners: [.rootSegmentAsBundleID(index: 2)],
+            excludeRootSegments: appleContainerNames
+        ),
         access: .fda,
         action: .trash,
         title: "App Store app caches",
         explain: "Caches of App Store apps."
     )
 
-    /// Placeholder. Offers nothing yet, for the same reason as `userContainerCaches`
-    /// (the catalog skips `group.com.apple.*`, `*.com.apple.*` and `systemgroup.*`, which
-    /// are wildcard names in the root).
+    /// Each child of the `Library/Caches` folder of a third-party app group.
+    ///
+    /// Tier is Review, not the catalog's Safe: a group container is shared by several apps and
+    /// its name (`group.<team>.<name>`) does not say which app to check, so no owner check is
+    /// possible. Review rows are never selected by default.
     static let userGroupContainerCaches = Rule(
         id: "user.groupContainerCaches",
         category: .caches,
-        tier: .safe,
+        tier: .review,
         roots: [.home(["Library", "Group Containers", "*", "Library", "Caches"])],
-        match: .measureOnly,
+        match: .children,
+        guards: Guards(excludeRootSegments: appleContainerNames),
         access: .fda,
         action: .trash,
         title: "Shared app caches",
@@ -77,7 +84,7 @@ enum CachesRules {
         tier: .safe,
         roots: [.home(["Library", "Saved Application State"])],
         match: .children,
-        guards: Guards(owners: [.childNameAsBundleID]),
+        guards: Guards(owners: [.childNameAsBundleID(stripSuffix: ".savedState")]),
         access: .user,
         action: .trash,
         title: "Saved window state",
@@ -91,7 +98,7 @@ enum CachesRules {
         tier: .review,
         roots: [.darwinCache()],
         match: .children,
-        guards: Guards(minAge: .days(7), owners: [.childNameAsBundleID]),
+        guards: Guards(minAge: .days(7), owners: [.childNameAsBundleID(stripSuffix: nil)]),
         access: .user,
         action: .trash,
         title: "System caches for your account",

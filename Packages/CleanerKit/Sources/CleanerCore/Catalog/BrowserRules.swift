@@ -1,8 +1,7 @@
 /// Rules from `docs/RULE_CATALOG.md` §4.4 (Browsers), in catalog order.
 ///
-/// Every rule lists its browsers as owners. `Guards.owners` is one list per rule, so the gate
-/// skips the rule's items while any listed browser runs, not only the browser that owns the
-/// item. That is stricter than the catalog, never looser.
+/// `browser.chromium` puts each browser's bundle ID on that browser's own roots
+/// (`RootSpec.owners`), so a running Chrome blocks only Chrome's caches.
 enum BrowserRules {
     /// Every rule in the Browsers section.
     static let all: [Rule] = [
@@ -102,12 +101,12 @@ enum BrowserRules {
         tier: .safe,
         roots: chromiumBrowsers.flatMap { browser -> [RootSpec] in
             let support = ["Library", "Application Support"] + browser.support
-            return [.home(["Library", "Caches"] + browser.caches)]
-                + profileCacheFolders.map { RootSpec.home(support + ["*", $0]) }
-                + browserLevelCacheFolders.map { RootSpec.home(support + $0) }
+            let owners = [OwnerSpec.bundleID(browser.bundleID)]
+            return [.home(["Library", "Caches"] + browser.caches, owners: owners)]
+                + profileCacheFolders.map { RootSpec.home(support + ["*", $0], owners: owners) }
+                + browserLevelCacheFolders.map { RootSpec.home(support + $0, owners: owners) }
         },
         match: .children,
-        guards: Guards(owners: chromiumBrowsers.map { .bundleID($0.bundleID) }),
         access: .fda,
         action: .trash,
         title: "Chromium browser caches",

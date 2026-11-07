@@ -10,6 +10,10 @@ struct ResolvedRoots: Sendable {
     var needsAccess: [URL] = []
     /// A root that does not exist, or is not a real folder.
     var missing: [URL] = []
+    /// Folders a rule's `excludeRootSegments` left out: the folder a `*` stood for, such as
+    /// `Containers/com.apple.Notes`. They are never opened below that level, so they cannot
+    /// produce `needsAccess` or `missing` entries.
+    var excluded: [URL] = []
     /// True when something was left out for a reason other than "missing" or "denied".
     var incomplete = false
 }
@@ -22,6 +26,7 @@ struct ResolvedRoots: Sendable {
 ///   reaches a folder through a symlinked ancestor and the home-relative protected list always applies.
 /// - Components after a `*` are listed one level at a time. Only real folders are kept.
 /// - Each `*` level keeps at most `maxMatchesPerWildcard` folders, in name order.
+/// - A folder matched by `*` whose name matches one of `excluding` is recorded in `excluded` and not opened.
 /// - A literal component that is missing under a matched folder is not reported: that folder simply does
 ///   not match. Only a missing `base` goes to `missing`.
 enum RootResolver {
@@ -41,7 +46,12 @@ enum RootResolver {
     /// - Parameters:
     ///   - expanded: The root to resolve.
     ///   - trusted: The base `expanded.base` was built from. The only place a symbolic link is resolved.
-    static func resolve(_ expanded: ExpandedRoot, trusted: URL) -> ResolvedRoots {
+    ///   - excluding: Name patterns (`Guards.excludeRootSegments`). A folder matched by a `*`
+    ///     component whose name fits one of them is skipped.
+    static func resolve(
+        _ expanded: ExpandedRoot, trusted: URL, excluding: [String] = []
+    ) -> ResolvedRoots {
+        let excludedNames = excluding.map { GlobPattern($0) }
         var resolved = ResolvedRoots()
         var base: URL
         switch FolderProbe.realPath(of: trusted) {
@@ -87,7 +97,12 @@ enum RootResolver {
                         record(failure, at: folder, in: &resolved)
                     case .success(let names):
                         for name in names where pattern.matches([fold(name)]) {
-                            next.append(folder.appending(path: name, directoryHint: .isDirectory))
+                            let child = folder.appending(path: name, directoryHint: .isDirectory)
+                            if excludedNames.contains(where: { $0.matches([fold(name)]) }) {
+                                resolved.excluded.append(child)
+                            } else {
+                                next.append(child)
+                            }
                         }
                     }
                 }

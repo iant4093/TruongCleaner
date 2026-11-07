@@ -19,11 +19,15 @@ public struct RootSpec: Sendable, Hashable {
     public var base: Base
     /// Path components below the base. A `"*"` component matches any one folder name.
     public var components: [String]
+    /// Apps or processes that must be closed before anything under this root is removed.
+    /// They are added to the rule's own `Guards.owners` for items under this root only.
+    public var owners: [OwnerSpec]
 
     /// Creates a root description.
-    public init(base: Base, components: [String]) {
+    public init(base: Base, components: [String], owners: [OwnerSpec] = []) {
         self.base = base
         self.components = components
+        self.owners = owners
     }
 }
 
@@ -37,7 +41,16 @@ public enum OwnerSpec: Sendable, Hashable {
     /// looks like one (at least three dot-separated parts, e.g. `com.example.App`).
     /// Used by rules such as `user.caches`, where each child folder belongs to one app.
     /// A name that does not look like a bundle ID has no owner from this spec.
-    case childNameAsBundleID
+    ///
+    /// - Parameter stripSuffix: A suffix removed from the name first (compared without regard
+    ///   to case), for folders such as `com.example.App.savedState`. Nil reads the name as it is.
+    case childNameAsBundleID(stripSuffix: String?)
+    /// The path component at `index` of the expanded root, read as a bundle identifier.
+    ///
+    /// `index` counts the components of the matching `RootSpec` (the ones after its base), so
+    /// for `Library/Containers/*/Data/Library/Caches` the `*` is index 2. The same rule applies
+    /// as for `childNameAsBundleID`: a segment that does not look like a bundle ID has no owner.
+    case rootSegmentAsBundleID(index: Int)
 }
 
 /// A fixed command that frees space through its owner's own tool.
@@ -86,6 +99,10 @@ public struct Guards: Sendable, Hashable {
     public var requiresSibling: [String]
     /// Rule-local exclusions on top of the global protected list.
     public var excludeNames: Set<String>
+    /// Name patterns (a single `*` is allowed, case-insensitive) matched against the folder
+    /// names that a `*` in a root stands for. A root with a matching name is not scanned at all.
+    /// For example `com.apple.*` leaves out `Containers/com.apple.Notes/...`.
+    public var excludeRootSegments: [String]
 
     /// Creates a set of guards. All default to "no extra condition".
     public init(
@@ -93,13 +110,15 @@ public struct Guards: Sendable, Hashable {
         keepNewest: Int? = nil,
         owners: [OwnerSpec] = [],
         requiresSibling: [String] = [],
-        excludeNames: Set<String> = []
+        excludeNames: Set<String> = [],
+        excludeRootSegments: [String] = []
     ) {
         self.minAge = minAge
         self.keepNewest = keepNewest
         self.owners = owners
         self.requiresSibling = requiresSibling
         self.excludeNames = excludeNames
+        self.excludeRootSegments = excludeRootSegments
     }
 }
 
@@ -107,6 +126,9 @@ public struct Guards: Sendable, Hashable {
 public enum Action: Sendable, Hashable {
     /// Move to the Trash.
     case trash
+    /// Delete for good. For items that are already in a Trash, where moving them is meaningless.
+    /// The executor asks for the explicit confirmation required by `safety.md` rule 11.
+    case deletePermanently
     /// Run the owner's own command.
     case ownerCommand(OwnerCommandSpec)
     /// Nothing. Info rows only.

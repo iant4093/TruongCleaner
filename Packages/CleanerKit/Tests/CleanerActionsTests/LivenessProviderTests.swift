@@ -172,10 +172,34 @@ struct LivenessProviderTests {
     @Test func owners_childNameWithoutBundleShapeHasNoOwner() async {
         let root = URL(filePath: "/tmp/caches", directoryHint: .isDirectory)
         let provider = ProcessNameOwnerProvider(roots: [root])
-        #expect(await provider.state(of: .childNameAsBundleID, for: root.appending(path: "plain/x")) == .notRunning)
-        #expect(await provider.state(of: .childNameAsBundleID, for: root.appending(path: "a.b/x")) == .notRunning)
-        #expect(await provider.state(of: .childNameAsBundleID, for: root.appending(path: "com.example.Tool/x")) == .unknown)
-        #expect(await provider.state(of: .childNameAsBundleID, for: URL(filePath: "/elsewhere/com.a.b")) == .unknown)
+        #expect(await provider.state(of: .childNameAsBundleID(stripSuffix: nil), for: root.appending(path: "plain/x")) == .notRunning)
+        #expect(await provider.state(of: .childNameAsBundleID(stripSuffix: nil), for: root.appending(path: "a.b/x")) == .notRunning)
+        #expect(await provider.state(of: .childNameAsBundleID(stripSuffix: nil), for: root.appending(path: "com.example.Tool/x")) == .unknown)
+        #expect(await provider.state(of: .childNameAsBundleID(stripSuffix: nil), for: URL(filePath: "/elsewhere/com.a.b")) == .unknown)
+    }
+
+    @Test func owners_childNameCanStripASuffix() async {
+        let root = URL(filePath: "/tmp/saved", directoryHint: .isDirectory)
+        let provider = ProcessNameOwnerProvider(roots: [root])
+        let owner = OwnerSpec.childNameAsBundleID(stripSuffix: ".savedState")
+        // "a.b.savedState" is "a.b" after stripping: not a bundle ID, so no owner.
+        #expect(await provider.state(of: owner, for: root.appending(path: "a.b.savedState/x")) == .notRunning)
+        #expect(await provider.state(of: owner, for: root.appending(path: "com.example.Tool.savedState/x")) == .unknown)
+    }
+
+    @Test func owners_rootSegmentNeedsTheRootSpecs() async {
+        let specs = [RootSpec(base: .home, components: ["Library", "Containers", "*", "Data"])]
+        let root = URL(filePath: "/tmp/h/Library/Containers/com.example.Tool/Data", directoryHint: .isDirectory)
+        let plain = URL(filePath: "/tmp/h/Library/Containers/plain/Data", directoryHint: .isDirectory)
+        let owner = OwnerSpec.rootSegmentAsBundleID(index: 2)
+        let provider = ProcessNameOwnerProvider(roots: [root, plain], rootSpecs: specs)
+        // A segment that is not a bundle ID has no owner. A bundle ID cannot be matched to a process.
+        #expect(await provider.state(of: owner, for: plain.appending(path: "x")) == .notRunning)
+        #expect(await provider.state(of: owner, for: root.appending(path: "x")) == .unknown)
+        // Without specs or without a known root, the answer is unknown.
+        let blind = ProcessNameOwnerProvider(roots: [root, plain])
+        #expect(await blind.state(of: owner, for: plain.appending(path: "x")) == .unknown)
+        #expect(await provider.state(of: owner, for: URL(filePath: "/elsewhere/x")) == .unknown)
     }
 
     // MARK: CompositeOwnerProvider

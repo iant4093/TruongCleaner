@@ -9,18 +9,24 @@ import Foundation
 /// `.unknown`: bundle identifiers need `NSRunningApplication`, which the app layer supplies and
 /// combines with this provider through `CompositeOwnerProvider`.
 ///
-/// `.childNameAsBundleID` is normally resolved by the gate before it asks. If it arrives anyway,
-/// this provider reads the top-level folder below one of its `roots`: a name with fewer than three
-/// dot-separated parts has no owner (`.notRunning`); anything else is `.unknown`, because a bundle
-/// identifier cannot be matched against process names.
+/// `.childNameAsBundleID` and `.rootSegmentAsBundleID` are normally resolved by the gate before it
+/// asks. If one arrives anyway, this provider finds the item's root among its `roots` and reads
+/// the name the spec points at: a name that does not look like a bundle identifier has no owner
+/// (`.notRunning`); anything else is `.unknown`, because a bundle identifier cannot be matched
+/// against process names. `.rootSegmentAsBundleID` also needs the rule's `rootSpecs`; without
+/// them the answer is `.unknown`.
 public struct ProcessNameOwnerProvider: RunningAppsProvider {
     private let roots: [URL]
+    private let rootSpecs: [RootSpec]
 
     /// Creates a provider.
     ///
-    /// - Parameter roots: The rule roots, used only to read `.childNameAsBundleID`.
-    public init(roots: [URL] = []) {
+    /// - Parameters:
+    ///   - roots: The rule roots, used only to read `.childNameAsBundleID` and `.rootSegmentAsBundleID`.
+    ///   - rootSpecs: The rule's root specs, used only to read `.rootSegmentAsBundleID`.
+    public init(roots: [URL] = [], rootSpecs: [RootSpec] = []) {
         self.roots = roots
+        self.rootSpecs = rootSpecs
     }
 
     /// The state of `owner`. See the type documentation for what each spec means here.
@@ -31,16 +37,12 @@ public struct ProcessNameOwnerProvider: RunningAppsProvider {
             return Self.isProcessRunning(named: name)
         case .bundleID:
             return .unknown
-        case .childNameAsBundleID:
-            guard let parts = PathParts.components(of: item) else { return .unknown }
-            for root in roots {
-                guard let rootParts = PathParts.components(of: root), parts.count > rootParts.count,
-                    parts.starts(with: rootParts)
-                else { continue }
-                let pieces = parts[rootParts.count].split(separator: ".", omittingEmptySubsequences: false)
-                return pieces.count < 3 || pieces.contains(where: \.isEmpty) ? .notRunning : .unknown
+        case .childNameAsBundleID, .rootSegmentAsBundleID:
+            let root = OwnerResolution.deepestRoot(containing: item, in: roots)
+            switch OwnerResolution.target(for: owner, item: item, root: root, rootSpecs: rootSpecs) {
+            case .noOwner: return .notRunning
+            case .ask, .unresolvable: return .unknown
             }
-            return .unknown
         }
     }
 

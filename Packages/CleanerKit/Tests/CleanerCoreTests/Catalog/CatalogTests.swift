@@ -14,7 +14,7 @@ struct CatalogTests {
     private static let expected: [Expected] = [
         Expected(id: "user.caches", category: .caches, tier: .safe),
         Expected(id: "user.containerCaches", category: .caches, tier: .safe),
-        Expected(id: "user.groupContainerCaches", category: .caches, tier: .safe),
+        Expected(id: "user.groupContainerCaches", category: .caches, tier: .review),
         Expected(id: "user.savedState", category: .caches, tier: .safe),
         Expected(id: "user.darwinCache", category: .caches, tier: .review),
         Expected(id: "user.darwinTemp", category: .caches, tier: .review),
@@ -95,6 +95,36 @@ struct CatalogTests {
     @Test func inertPlaceholdersAreExactlyTheKnownOnes() {
         let inert = Catalog.all.filter { $0.tier != .info && $0.match == .measureOnly }
         #expect(Set(inert.map(\.id)) == CatalogFixture.inertRuleIDs)
+    }
+
+    @Test func onlyTheTrashRulesDeletePermanently() {
+        let permanent = Catalog.all.filter { $0.action == .deletePermanently }.map(\.id)
+        #expect(permanent == ["trash.user", "trash.volumes"])
+        // Permanent delete is never selected by default.
+        #expect(Catalog.all.filter { $0.action == .deletePermanently }.allSatisfy { $0.tier == .review })
+    }
+
+    @Test func excludeRootSegmentsOnlyAppearOnRulesWithAWildcardRoot() {
+        for rule in Catalog.all where !rule.guards.excludeRootSegments.isEmpty {
+            #expect(
+                rule.roots.allSatisfy { $0.components.contains { $0.contains("*") } },
+                "\(rule.id): every root needs a `*` for the patterns to apply to")
+            for pattern in rule.guards.excludeRootSegments {
+                #expect(!pattern.isEmpty && !pattern.contains("/"), "\(rule.id): bad pattern \(pattern)")
+            }
+        }
+    }
+
+    @Test func ownerSpecsPointInsideTheirRoots() {
+        for rule in Catalog.all {
+            for case .rootSegmentAsBundleID(let index) in rule.guards.owners {
+                for spec in rule.roots {
+                    #expect(
+                        spec.components.indices.contains(index) && spec.components[index].contains("*"),
+                        "\(rule.id): index \(index) must be a `*` component of every root")
+                }
+            }
+        }
     }
 
     @Test func nonInfoRulesNeverRootInTheSystemLibrary() {
