@@ -91,6 +91,10 @@ private struct DetailView: View {
             LargeFilesPage(model: model.largeFiles)
         case .spaceLens:
             SpaceLensPage(model: model.spaceLens)
+        case .trash:
+            TrashPage(model: model.trash)
+        case .history:
+            HistoryPage(model: model.cleanHistory)
         default:
             placeholder
         }
