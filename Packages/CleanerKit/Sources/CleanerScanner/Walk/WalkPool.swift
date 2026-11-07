@@ -15,6 +15,8 @@ struct WalkJob: Sendable {
     var keptNode: Int
     /// Whether this directory is, or lies below, a pruned folder (`WalkOptions.pruneNames`).
     var prune: PruneState = .none
+    /// Where this directory is inside the rule's glob (`WalkOptions.descent`).
+    var descent: DescentCursor = .everything
 }
 
 /// Queue of open directories shared by the workers.
@@ -181,30 +183,97 @@ final class ProgressReporter: Sendable {
     }
 }
 
-/// Runs `body` on real threads and calls `onFinished` on the last one to end.
+/// The worker threads of one walk.
 ///
-/// Threads, not tasks: the work is blocking system calls, and the number of
-/// workers must be exact. The caller is never blocked; it awaits a continuation.
-enum WalkPool {
-    static func run(
-        workers: Int,
+/// Threads, not tasks: the work is blocking system calls, and the number of workers must be exact. The
+/// caller is never blocked; it awaits a continuation that `onFinished` resumes on the last thread to end.
+///
+/// A walk with a `WorkerBudget` starts with the threads it is given and may add more while it runs
+/// (`offerExtraWorker`), up to `maxThreads` in all and only while the budget has room. A walk without a
+/// budget keeps exactly the threads it started with.
+final class WalkGroup: Sendable {
+    private struct State {
+        var outputs: [WorkerOutput] = []
+        var active = 0
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+    private let budget: WorkerBudget?
+    private let maxThreads: Int
+    private let body: @Sendable () -> WorkerOutput
+    private let onFinished: @Sendable ([WorkerOutput]) -> Void
+
+    /// - Parameters:
+    ///   - budget: Thread budget shared with other walks, or nil for a fixed set of threads.
+    ///   - maxThreads: Most threads this walk may have at once.
+    ///   - body: One worker's work. Runs on its own thread.
+    ///   - onFinished: Called once, on the last thread to end, with every worker's output.
+    init(
+        budget: WorkerBudget?,
+        maxThreads: Int,
         body: @escaping @Sendable () -> WorkerOutput,
         onFinished: @escaping @Sendable ([WorkerOutput]) -> Void
     ) {
-        let outputs = OSAllocatedUnfairLock<[WorkerOutput]>(initialState: [])
-        for _ in 0..<workers {
-            let thread = Thread {
-                let output = body()
-                let finished = outputs.withLock { all -> [WorkerOutput]? in
-                    all.append(output)
-                    return all.count == workers ? all : nil
-                }
-                if let finished { onFinished(finished) }
-            }
-            thread.stackSize = 1 << 20
-            thread.qualityOfService = .userInitiated
-            thread.start()
+        self.budget = budget
+        self.maxThreads = max(1, maxThreads)
+        self.body = body
+        self.onFinished = onFinished
+    }
+
+    /// Starts the first `count` threads. Call once.
+    func start(workers count: Int) {
+        let count = max(1, count)
+        state.withLock { $0.active = count }
+        for _ in 0..<count { launch(releasesBudget: false) }
+    }
+
+    /// Adds a thread if the budget has room and the walk is below its cap. Called by a running worker
+    /// right after it put a directory in the queue, so the new thread has something to take.
+    func offerExtraWorker() {
+        guard let budget, budget.mightHaveRoom, budget.tryAcquireExtra() else { return }
+        let added = state.withLock { state -> Bool in
+            // Only a running worker calls this, so `active > 0`: the walk cannot have finished.
+            guard state.active > 0, state.active < maxThreads else { return false }
+            state.active += 1
+            return true
         }
+        if added {
+            launch(releasesBudget: true)
+        } else {
+            budget.releaseExtra()
+        }
+    }
+
+    private func launch(releasesBudget: Bool) {
+        let thread = Thread { [self] in
+            let output = body()
+            if releasesBudget { budget?.releaseExtra() }
+            let finished = state.withLock { state -> [WorkerOutput]? in
+                state.outputs.append(output)
+                state.active -= 1
+                return state.active == 0 ? state.outputs : nil
+            }
+            if let finished { onFinished(finished) }
+        }
+        thread.stackSize = 1 << 20
+        thread.qualityOfService = .userInitiated
+        thread.start()
+    }
+}
+
+/// Lets a worker ask its walk for another thread without the context knowing the walk's thread group.
+final class ExtraWorkers: Sendable {
+    private let group = OSAllocatedUnfairLock<WalkGroup?>(initialState: nil)
+
+    /// Connects the walk's thread group. Pass nil when the walk ends, which also breaks the reference cycle.
+    func install(_ walkGroup: WalkGroup?) {
+        group.withLock { $0 = walkGroup }
+    }
+
+    /// Asks for one more thread. Does nothing when no group is installed or the budget is full.
+    func offer() {
+        let current = group.withLock { $0 }
+        current?.offerExtraWorker()
     }
 }
 

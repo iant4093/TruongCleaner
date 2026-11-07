@@ -53,6 +53,10 @@ struct WalkContext: Sendable {
     let handoffLimit: Int
     /// Folder names whose subtree is totaled as one node.
     let prune: PrunePlan
+    /// Which folders of a `.glob` rule are opened at all. nil opens everything.
+    let descent: DescentFilter?
+    /// Where a worker asks for more threads. nil when the walk has a fixed set of threads.
+    let extras: ExtraWorkers?
 }
 
 /// A directory being walked depth-first. `names` holds its subdirectory names, NUL terminated.
@@ -62,6 +66,7 @@ private struct Frame {
     let depth: Int
     let keptNode: Int
     let prune: PruneState
+    let descent: DescentCursor
     var totals = Totals()
     var names: [CChar] = []
     var directories: [PendingDirectory] = []
@@ -171,7 +176,9 @@ struct DirectoryWalker {
     /// Depth-first walk from `job` (takes ownership of its descriptor and of every descriptor it opens).
     private mutating func walk(_ job: WalkJob) {
         var stack = [
-            Frame(fd: job.fd, path: job.path, depth: job.depth, keptNode: job.keptNode, prune: job.prune)
+            Frame(
+                fd: job.fd, path: job.path, depth: job.depth, keptNode: job.keptNode, prune: job.prune,
+                descent: job.descent)
         ]
         readDirectory(&stack[0])
         while !stack.isEmpty {
@@ -205,6 +212,24 @@ struct DirectoryWalker {
         let pending = parent.directories[parent.cursor]
         parent.cursor += 1
         let parentFD = parent.fd
+        // A folder that cannot hold or be a match of the rule's glob is not opened (see `DescentFilter`).
+        var childDescent = DescentCursor.everything
+        if let filter = context.descent {
+            let decision = parent.names.withUnsafeBufferPointer { names -> DescentCursor? in
+                guard let base = names.baseAddress else { return .everything }
+                return filter.enter(base + pending.nameOffset, from: parent.descent, depth: parent.depth)
+            }
+            guard let cursor = decision else {
+                if !parent.hasMore {
+                    close(parent.fd)
+                    parent.fd = -1
+                }
+                // Its own date still counts towards the folder above, as for any folder.
+                parent.totals.note(time: pending.modified)
+                return nil
+            }
+            childDescent = cursor
+        }
         let childFD = parent.names.withUnsafeBufferPointer { names -> Int32 in
             guard let base = names.baseAddress else { return -1 }
             return openat(parentFD, base + pending.nameOffset, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -252,12 +277,20 @@ struct DirectoryWalker {
             return nil
         }
         let keptNode = register(pending, path: path, parent: &parent, keepsNode: keepsNode)
-        let job = WalkJob(fd: childFD, path: path, depth: parent.depth + 1, keptNode: keptNode, prune: childPrune)
-        if context.handoffLimit > 0, context.queue.pushIfBelow(job, limit: context.handoffLimit) {
-            return nil
+        let job = WalkJob(
+            fd: childFD, path: path, depth: parent.depth + 1, keptNode: keptNode, prune: childPrune,
+            descent: childDescent)
+        if context.handoffLimit > 0 {
+            let handedOff = context.queue.pushIfBelow(job, limit: context.handoffLimit)
+            // Work is waiting (just queued, or the queue is already full): let the walk take a free
+            // thread from the scan's budget, if there is one now. A full queue is asked again for every
+            // folder, so a thread that frees up later is used.
+            context.extras?.offer()
+            if handedOff { return nil }
         }
         var frame = Frame(
-            fd: job.fd, path: job.path, depth: job.depth, keptNode: job.keptNode, prune: job.prune)
+            fd: job.fd, path: job.path, depth: job.depth, keptNode: job.keptNode, prune: job.prune,
+            descent: job.descent)
         readDirectory(&frame)
         return frame
     }

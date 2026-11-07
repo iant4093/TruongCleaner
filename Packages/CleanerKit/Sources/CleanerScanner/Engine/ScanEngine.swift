@@ -11,7 +11,8 @@ public actor ScanEngine {
 
     /// Starts a scan and returns its events.
     ///
-    /// Events arrive as: `.ruleStarted` and `.ruleFinished` for each rule (finished results in request order),
+    /// Events arrive as: `.ruleStarted` and `.ruleFinished` for each rule (a result arrives as soon as no
+    /// earlier unfinished rule could offer one of its paths; see ``ScanEvent/ruleFinished(_:)``),
     /// throttled `.progress`, and `.finished` last. The stream ends after `.finished`.
     ///
     /// Cancelling the task that reads the stream stops the walks within about 100 ms. A consumer that
