@@ -10,6 +10,8 @@ public struct FixtureTree: Sendable {
     /// Errors from fixture setup.
     public enum FixtureError: Error, Sendable {
         case cannotCreate(String)
+        /// A system call failed. Holds the call name, the relative path and `errno`.
+        case systemCall(String, String, Int32)
     }
 
     /// Real path (symlinks resolved) of this tree's unique folder.
@@ -68,6 +70,20 @@ public struct FixtureTree: Sendable {
         return url
     }
 
+    /// Adds `count` empty files named `<prefix>0 ... <prefix>(count-1)` to a folder, checking containment once.
+    /// Much faster than `addFile` in a loop. Use it for trees with thousands of files.
+    public func addEmptyFiles(in relativeFolder: String, count: Int, prefix: String = "f") throws {
+        precondition(count >= 0, "Negative file count")
+        let folder = try prepare(relativeFolder + "/placeholder").deletingLastPathComponent()
+        precondition(!isSymlink(folder), "Refusing to write through a symlink: \(relativeFolder)")
+        for index in 0..<count {
+            let path = folder.appending(path: "\(prefix)\(index)").path
+            let fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            guard fd >= 0 else { throw FixtureError.systemCall("open", relativeFolder, errno) }
+            close(fd)
+        }
+    }
+
     /// Adds a folder, creating parents as needed.
     ///
     /// Adding children later changes a folder's modification date, so set
@@ -99,6 +115,49 @@ public struct FixtureTree: Sendable {
         let url = try prepare(relativePath)
         try FileManager.default.linkItem(at: existing, to: url)
         return url
+    }
+
+    /// Adds a copy-on-write clone of a file that is already inside the root.
+    /// Clones share disk blocks with the source, so a clone adds no private space.
+    /// Throws if the volume cannot clone (APFS can).
+    @discardableResult
+    public func clone(_ source: URL, to relativePath: String) throws -> URL {
+        precondition(contains(source), "Clone source must be inside the fixture root")
+        precondition(!isSymlink(source), "Clone source must not be a symlink")
+        let url = try prepare(relativePath)
+        guard copyfile(source.path, url.path, nil, copyfile_flags_t(COPYFILE_CLONE_FORCE)) == 0 else {
+            throw FixtureError.systemCall("copyfile", relativePath, errno)
+        }
+        return url
+    }
+
+    /// Adds a named pipe (FIFO).
+    @discardableResult
+    public func addFIFO(_ relativePath: String) throws -> URL {
+        let url = try prepare(relativePath)
+        guard mkfifo(url.path, 0o600) == 0 else {
+            throw FixtureError.systemCall("mkfifo", relativePath, errno)
+        }
+        return url
+    }
+
+    /// Sets the modification date of a file or folder inside the root.
+    /// Do this after adding children to a folder, because adding children changes the folder's date.
+    public func setModified(_ relativePath: String, to date: Date) throws {
+        let url = url(for: relativePath)
+        precondition(!isSymlink(url), "Refusing to change dates through a symlink")
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+    }
+
+    /// Sets BSD file flags (`chflags`), for example `UInt32(UF_HIDDEN)`.
+    /// Do not use immutable flags; `remove()` would not be able to delete them.
+    public func setFlags(_ relativePath: String, flags: UInt32) throws {
+        let url = url(for: relativePath)
+        precondition(!isSymlink(url), "Refusing to change flags through a symlink")
+        precondition(flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE | UF_APPEND | SF_APPEND) == 0, "Fixtures must stay removable")
+        guard chflags(url.path, flags) == 0 else {
+            throw FixtureError.systemCall("chflags", relativePath, errno)
+        }
     }
 
     /// Sets POSIX permissions (for example `0o000` for an unreadable folder).
