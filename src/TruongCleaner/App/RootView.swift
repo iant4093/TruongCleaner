@@ -65,8 +65,34 @@ private struct SidebarView: View {
 
 private struct DetailView: View {
     let page: Page
+    @Environment(AppModel.self) private var model
 
     var body: some View {
+        content
+            .navigationTitle(page.title)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {} label: {
+                        Label("Scan", systemImage: "magnifyingglass")
+                    }
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut("r")
+                    .disabled(true)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch page {
+        case .overview:
+            OverviewPage(model: model.overview)
+        default:
+            placeholder
+        }
+    }
+
+    private var placeholder: some View {
         VStack(spacing: 0) {
             PageHeader(symbol: page.symbol, color: page.color, title: page.title, subtitle: page.subtitle)
                 .padding(.horizontal, 24)
@@ -77,17 +103,6 @@ private struct DetailView: View {
                 description: Text("This page is built in Wave \(page.builtInWave).")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .navigationTitle(page.title)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {} label: {
-                    Label("Scan", systemImage: "magnifyingglass")
-                }
-                .buttonStyle(.glassProminent)
-                .keyboardShortcut("r")
-                .disabled(true)
-            }
         }
     }
 }

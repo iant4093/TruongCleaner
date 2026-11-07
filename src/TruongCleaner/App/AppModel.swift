@@ -5,4 +5,7 @@ import Observation
 final class AppModel {
     /// The page shown in the detail column.
     var selection: Page = .overview
+
+    /// Data for the Overview page.
+    let overview = OverviewModel()
 }
