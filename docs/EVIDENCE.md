@@ -124,3 +124,16 @@ with zero Swift warnings (with the sandbox flag). Release app: arm64, platform
 MACOS, minos 26.0, SDK 27.0, only system libraries, **352 KB**. `FixtureTree`
 refuses paths outside its root and symlinks. `Rule` equality is by `id` because
 `LocalizedStringResource` is not `Hashable` (accepted).
+
+### Tasks 2.1–2.3 review (2026-11-06)
+
+Each brief ran in its own git worktree (`dispatch.sh -w`), then merged into
+`main`; one conflict in `tcbench/main.swift` resolved by the orchestrator.
+Merged suite: **140 tests pass** (CleanerScanner 73, CleanerCore 66, Actions 1),
+zero warnings.
+
+| Task | Result | Notes |
+|---|---|---|
+| 2.1 BulkWalker | 25 walker tests; `tcbench walk ~/Library/Developer --workers 8`: 88,306 files in 1.53 s, 33.66 GB allocated, 31.07 GB private, 13.3 MB peak | Totals equal across 1/4/8 workers and `du -skx`. Clone fixture: one 4 MB file + 2 clones = 12,582,912 B allocated and **0 B private** (every block shared), so private size is a lower bound and allocated an upper bound for what a deletion frees; the UI must show "up to". |
+| 2.2 Volume/Snapshots/Simulators | 51 tests incl. live smoke | `tcbench volume`: 994.66 GB total, 61.72 GB available, 59.17 GB purgeable, 904.32 GB Data used, 0 snapshots, 11 simulator devices, 1 runtime (iOS 27.0, 8.07 GB). Unparseable `tmutil` output → "Unknown", never 0. |
+| 2.3 PathPolicy/Matcher | 66 tests; 90 protected-list rows encoded from RULE_CATALOG §3 | Protection is case-insensitive and component-wise; `isInside` is case-sensitive (stricter). Unknown age → keep. |
