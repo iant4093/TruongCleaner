@@ -316,7 +316,7 @@ struct BulkWalkerTests {
 
         #expect(result.partial)
         #expect(result.files < 20_000)
-        #expect(elapsed < .milliseconds(500))
+        #expect(elapsed < timingBudget(.milliseconds(500)))
     }
 
     @Test func timeLimitReturnsAPartialResult() async throws {

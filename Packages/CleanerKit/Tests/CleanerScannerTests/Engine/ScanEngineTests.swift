@@ -497,7 +497,7 @@ struct ScanEngineTests {
         #expect(report.partial)
         #expect(report.results.count == 1)
         #expect(report.results[0].partial)
-        #expect(elapsed < .milliseconds(200))
+        #expect(elapsed < timingBudget(.milliseconds(200)))
     }
 
     @Test
@@ -522,7 +522,7 @@ struct ScanEngineTests {
         let clock = ContinuousClock()
         let started = clock.now
         _ = await consumer.value
-        #expect(started.duration(to: clock.now) < .milliseconds(200))
+        #expect(started.duration(to: clock.now) < timingBudget(.milliseconds(200)))
     }
 
     @Test

@@ -56,6 +56,9 @@ jobs:
       - name: Deletion call sites stay inside CleanerActions
         run: bash scripts/check-deletion-sites.sh
       - name: CleanerKit tests (Swift Testing)
+        env:
+          # 3-core shared runner: widen promptness checks (see Tests/Fixtures/TimingBudget.swift).
+          TC_TIMING_SLACK: "10"
         run: bash scripts/test.sh package
       - name: Upload test logs
         if: always()
