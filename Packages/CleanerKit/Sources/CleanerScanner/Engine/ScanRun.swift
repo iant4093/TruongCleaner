@@ -185,38 +185,46 @@ private struct RunPlan {
         state.started = clock.now
         emit(.ruleStarted(rule.id))
 
-        // Rules that are not walked (owner commands) have no roots to resolve.
-        if case .ownerCommand = rule.match {
+        // Rules that are not walked (owner commands, computed rows) have no roots to resolve.
+        switch rule.match {
+        case .ownerCommand, .computed:
             state.finished = clock.now
             states[index] = state
             return
+        default:
+            break
         }
         for spec in rule.roots {
-            guard let expanded = RootExpansion.expand(spec, in: request.environment) else {
-                // Unknown base (no Darwin directory) or an unsafe component: nothing is scanned.
+            // One starting folder, or one per project folder the user chose.
+            let starts = RootExpansion.starts(of: spec, in: request.environment)
+            if starts.isEmpty && spec.base != .userChosen {
+                // Unknown base (no Darwin directory): nothing is scanned.
                 state.partial = true
                 continue
             }
-            guard let trusted = RootResolver.trustedBase(for: spec.base, in: request.environment) else {
-                state.partial = true
-                continue
-            }
-            let resolved = RootResolver.resolve(
-                expanded, trusted: trusted, excluding: rule.guards.excludeRootSegments)
-            Self.append(resolved.excluded, to: &state.excluded)
-            Self.append(resolved.needsAccess, to: &state.needsAccess)
-            Self.append(resolved.missing, to: &state.missing)
-            state.partial = state.partial || resolved.incomplete
-            for root in resolved.roots {
-                // The resolver already skips excluded wildcard folders; this is the same rule applied
-                // to the finished root, so a root can never be walked against the rule's patterns.
-                if rule.excludesRoot(root) {
-                    Self.append([root], to: &state.excluded)
+            for trusted in starts {
+                guard let expanded = RootExpansion.expand(spec, from: trusted) else {
+                    // An unsafe component: nothing is scanned.
+                    state.partial = true
                     continue
                 }
-                queue.append(Unit(ruleIndex: index, rule: rule, root: root, slot: nextSlot))
-                nextSlot += 1
-                state.remaining += 1
+                let resolved = RootResolver.resolve(
+                    expanded, trusted: trusted, excluding: rule.guards.excludeRootSegments)
+                Self.append(resolved.excluded, to: &state.excluded)
+                Self.append(resolved.needsAccess, to: &state.needsAccess)
+                Self.append(resolved.missing, to: &state.missing)
+                state.partial = state.partial || resolved.incomplete
+                for root in resolved.roots {
+                    // The resolver already skips excluded wildcard folders; this is the same rule applied
+                    // to the finished root, so a root can never be walked against the rule's patterns.
+                    if rule.excludesRoot(root) {
+                        Self.append([root], to: &state.excluded)
+                        continue
+                    }
+                    queue.append(Unit(ruleIndex: index, rule: rule, root: root, slot: nextSlot))
+                    nextSlot += 1
+                    state.remaining += 1
+                }
             }
         }
         if state.remaining == 0 { state.finished = clock.now }

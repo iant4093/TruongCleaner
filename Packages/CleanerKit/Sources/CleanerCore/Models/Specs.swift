@@ -13,6 +13,10 @@ public struct RootSpec: Sendable, Hashable {
         case darwinUserCache
         /// `DARWIN_USER_TEMP_DIR` (under `/private/var/folders`).
         case darwinUserTemp
+        /// Each folder in `Environment.projectFolders`, which the user picked in Settings.
+        /// `components` are relative to each of those folders and are normally empty, so the root
+        /// is the chosen folder itself. No chosen folder means no root.
+        case userChosen
     }
 
     /// What `components` are relative to.
@@ -58,18 +62,35 @@ public enum OwnerSpec: Sendable, Hashable {
 /// The executable path must be absolute and come from a fixed list. The
 /// command is never run through a shell.
 public struct OwnerCommandSpec: Sendable, Hashable {
+    /// The command's ID in the runner's allow-list, for example `"brew.cleanup"`.
+    ///
+    /// `CleanerCore` cannot see the allow-list (`CleanerActions.OwnerCommands`), so the ID is plain
+    /// text. A test in `CleanerActionsTests` checks that every catalog ID is known to the runner.
+    public var id: String
     /// Absolute path of the executable.
     public var executable: URL
-    /// Argument vector, without the executable.
+    /// Argument vector, without the executable. For the per-item simulator commands this is the
+    /// fixed part; the runner adds the validated device or runtime identifier itself.
     public var arguments: [String]
     /// Longest time the command may run.
     public var timeout: Duration
+    /// Commands that run after this one, in order, when a rule needs more than one
+    /// (`dev.dockerDangling`). Each has its own ID in the allow-list.
+    public var followUps: [OwnerCommandSpec]
 
     /// Creates a command description.
-    public init(executable: URL, arguments: [String], timeout: Duration) {
+    public init(
+        id: String,
+        executable: URL,
+        arguments: [String],
+        timeout: Duration,
+        followUps: [OwnerCommandSpec] = []
+    ) {
+        self.id = id
         self.executable = executable
         self.arguments = arguments
         self.timeout = timeout
+        self.followUps = followUps
     }
 }
 
@@ -85,6 +106,10 @@ public enum MatchSpec: Sendable, Hashable {
     case ownerCommand(OwnerCommandSpec)
     /// Info rows: size the root and show it.
     case measureOnly
+    /// Info rows with no folder to walk. The key names a value that the System Data page works out
+    /// itself (for example the snapshot list). Nothing is walked and nothing is offered.
+    /// Only Info rules use it, and such a rule has no roots.
+    case computed(String)
 }
 
 /// Extra conditions an item must meet to be offered.
@@ -103,6 +128,16 @@ public struct Guards: Sendable, Hashable {
     /// names that a `*` in a root stands for. A root with a matching name is not scanned at all.
     /// For example `com.apple.*` leaves out `Containers/com.apple.Notes/...`.
     public var excludeRootSegments: [String]
+    /// Like `requiresSibling`, but only for items with a given name (compared without regard to
+    /// case): the key is the item's name, the value lists names of which one must exist beside it.
+    /// Items with other names need nothing from this guard. For example `target` needs `Cargo.toml`.
+    public var requiresSiblingByName: [String: [String]]
+    /// Names that must not exist directly inside the item (for example `.git`, so nested
+    /// repositories are kept). Compared without regard to case.
+    ///
+    /// Needs the item's folder listing. An item whose inside the scan did not reach (at the
+    /// rule's maximum depth) cannot be checked, so it is kept.
+    public var skipIfContains: Set<String>
 
     /// Creates a set of guards. All default to "no extra condition".
     public init(
@@ -111,7 +146,9 @@ public struct Guards: Sendable, Hashable {
         owners: [OwnerSpec] = [],
         requiresSibling: [String] = [],
         excludeNames: Set<String> = [],
-        excludeRootSegments: [String] = []
+        excludeRootSegments: [String] = [],
+        requiresSiblingByName: [String: [String]] = [:],
+        skipIfContains: Set<String> = []
     ) {
         self.minAge = minAge
         self.keepNewest = keepNewest
@@ -119,6 +156,14 @@ public struct Guards: Sendable, Hashable {
         self.requiresSibling = requiresSibling
         self.excludeNames = excludeNames
         self.excludeRootSegments = excludeRootSegments
+        self.requiresSiblingByName = requiresSiblingByName
+        self.skipIfContains = skipIfContains
+    }
+
+    /// Whether the matcher needs the names inside each folder (`Matcher.evaluate`'s `siblingNames`)
+    /// to apply these guards.
+    public var needsFolderListings: Bool {
+        !requiresSibling.isEmpty || !requiresSiblingByName.isEmpty || !skipIfContains.isEmpty
     }
 }
 

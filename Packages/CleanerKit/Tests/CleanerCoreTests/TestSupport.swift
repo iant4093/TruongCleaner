@@ -7,13 +7,16 @@ enum TestEnv {
     static let homePath = "/Users/tester"
     static let home = URL(filePath: homePath, directoryHint: .isDirectory)
     static let now = Date(timeIntervalSince1970: 1_800_000_000)
+    /// The one project folder the user "chose" in tests.
+    static let projectFolder = URL(filePath: "/Users/tester/Code", directoryHint: .isDirectory)
 
-    static func environment(now: Date = TestEnv.now) -> Environment {
+    static func environment(now: Date = TestEnv.now, projectFolders: [URL] = [TestEnv.projectFolder]) -> Environment {
         Environment(
             home: home,
             darwinUserCache: URL(filePath: "/private/var/folders/ab/cdef/C", directoryHint: .isDirectory),
             darwinUserTemp: URL(filePath: "/private/var/folders/ab/cdef/T", directoryHint: .isDirectory),
-            now: now
+            now: now,
+            projectFolders: projectFolders
         )
     }
 

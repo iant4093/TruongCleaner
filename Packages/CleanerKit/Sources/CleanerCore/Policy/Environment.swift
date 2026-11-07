@@ -13,17 +13,22 @@ public struct Environment: Sendable {
     public var darwinUserTemp: URL?
     /// The current time. Item ages are measured against it.
     public var now: Date
+    /// Folders the user chose for `RootSpec.Base.userChosen` rules (project folders). Empty by default.
+    /// Folders the protected list covers, such as `~` or `~/Library`, are ignored.
+    public var projectFolders: [URL]
 
     /// Creates an environment.
     public init(
         home: URL,
         darwinUserCache: URL? = nil,
         darwinUserTemp: URL? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        projectFolders: [URL] = []
     ) {
         self.home = home
         self.darwinUserCache = darwinUserCache
         self.darwinUserTemp = darwinUserTemp
         self.now = now
+        self.projectFolders = projectFolders
     }
 }

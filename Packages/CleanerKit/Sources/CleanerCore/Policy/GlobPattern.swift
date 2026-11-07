@@ -11,15 +11,36 @@ enum PatternComponent: Sendable, Equatable {
 }
 
 /// A small path glob: literal names, `*` inside a component, `**` for any depth,
-/// and a leading `~` for the home folder. Matching is case-insensitive.
+/// `{a,b}` alternatives, and a leading `~` for the home folder. Matching is case-insensitive.
 public struct GlobPattern: Sendable {
-    let components: [PatternComponent]
+    /// Most patterns one `{...}` expansion may produce. A pattern that would produce more is kept
+    /// as written, so it matches nothing useful and the item is kept.
+    static let maxAlternatives = 256
+
+    /// One component list per alternative. Without braces there is exactly one.
+    let alternatives: [[PatternComponent]]
 
     /// Parses a pattern such as `~/Library/Caches/com.apple.Spotlight*/**`.
+    ///
+    /// A `{a,b}` group stands for each of its comma-separated options, so `*/**/{a,b/c}` means
+    /// `*/**/a` or `*/**/b/c`. Groups do not nest. A `{` without a closing `}` or without a
+    /// comma is an ordinary character.
     ///
     /// - Parameter home: Components of the home folder. `~` as the first
     ///   component expands to them. Pass nil for patterns relative to a rule root.
     public init(_ text: String, home: [String]? = nil) {
+        alternatives = Self.expandBraces(text).map { Self.parse($0, home: home) }
+    }
+
+    /// Whether the pattern matches the whole path.
+    ///
+    /// Each component of `path` must already be folded for comparison:
+    /// canonically composed (NFC) and lowercased, as the pattern's own names are.
+    public func matches(_ path: [String]) -> Bool {
+        alternatives.contains { Self.match($0[...], path[...]) }
+    }
+
+    private static func parse(_ text: String, home: [String]?) -> [PatternComponent] {
         var parts: [PatternComponent] = []
         let pieces = text.split(separator: "/", omittingEmptySubsequences: true)
         for (index, piece) in pieces.enumerated() {
@@ -34,15 +55,33 @@ public struct GlobPattern: Sendable {
                 parts.append(.literal(PathText.fold(name)))
             }
         }
-        components = parts
+        return parts
     }
 
-    /// Whether the pattern matches the whole path.
-    ///
-    /// Each component of `path` must already be folded for comparison:
-    /// canonically composed (NFC) and lowercased, as the pattern's own names are.
-    public func matches(_ path: [String]) -> Bool {
-        Self.match(components[...], path[...])
+    /// Expands `{a,b}` groups into the full patterns they stand for.
+    static func expandBraces(_ text: String) -> [String] {
+        var results: [String] = []
+        var pending = [text]
+        while let current = pending.popLast() {
+            guard let open = current.firstIndex(of: "{"),
+                  let close = current[open...].firstIndex(of: "}")
+            else {
+                results.append(current)
+                continue
+            }
+            let body = current[current.index(after: open)..<close]
+            guard body.contains(",") else {
+                results.append(current)
+                continue
+            }
+            let prefix = current[..<open]
+            let suffix = current[current.index(after: close)...]
+            for option in body.split(separator: ",", omittingEmptySubsequences: false).reversed() {
+                pending.append(String(prefix) + String(option) + String(suffix))
+            }
+            if results.count + pending.count > maxAlternatives { return [text] }
+        }
+        return results
     }
 
     private static func match(_ pattern: ArraySlice<PatternComponent>, _ path: ArraySlice<String>) -> Bool {

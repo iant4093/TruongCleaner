@@ -34,12 +34,14 @@ enum RootResolver {
     static let maxMatchesPerWildcard = 2_000
 
     /// The folder a `RootSpec.Base` stands for, or nil when the environment does not know it.
+    /// Nil for `.userChosen` too: it stands for several folders, see `RootExpansion.starts(of:in:)`.
     static func trustedBase(for base: RootSpec.Base, in environment: Environment) -> URL? {
         switch base {
         case .home: environment.home
         case .absolute: URL(filePath: "/", directoryHint: .isDirectory)
         case .darwinUserCache: environment.darwinUserCache
         case .darwinUserTemp: environment.darwinUserTemp
+        case .userChosen: nil
         }
     }
 
