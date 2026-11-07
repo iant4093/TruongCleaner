@@ -180,6 +180,8 @@ struct CatalogSpecificTests {
         let days: [String: Int64] = [
             "user.darwinCache": 7, "user.darwinTemp": 3, "user.gpuCaches": 1,
             "logs.user": 7, "logs.userCrash": 7, "logs.crashReporter": 30, "logs.coreSimulator": 7,
+            "dev.projectArtifacts": 30, "mail.downloads": 30,
+            "installers.macOS": 14, "installers.downloads": 7, "installers.partial": 1,
         ]
         for (id, count) in days {
             #expect(try CatalogFixture.rule(id).guards.minAge == .seconds(count * 86_400), "\(id)")
@@ -194,6 +196,8 @@ struct CatalogSpecificTests {
         #expect(review == [
             "user.darwinCache", "user.darwinTemp", "user.groupContainerCaches", "trash.user", "trash.volumes",
             "browser.chromiumModels", "apps.adobeMediaCache",
+            "dev.xcodeArchives", "dev.simDevices", "dev.simRuntimes", "dev.goModules", "dev.gradle", "dev.maven",
+            "dev.projectArtifacts", "ios.backups", "installers.macOS", "installers.downloads",
         ])
     }
 

@@ -62,7 +62,7 @@ struct CatalogObligationTests {
         let items = try (0..<(keep + 2)).map { index in
             try CatalogFixture.matching(rule, in: root, named: "item\(index)", modified: TestEnv.days(Double(100 + index)))
         }
-        let outcomes = CatalogFixture.evaluate(rule, root: root, items)
+        let outcomes = CatalogFixture.evaluate(rule, root: root, items, padKeepNewest: false)
         #expect(CatalogFixture.findings(outcomes).count == 2)
         #expect(CatalogFixture.skipReasons(outcomes) == Array(repeating: .keepNewest, count: keep))
     }
@@ -155,13 +155,30 @@ struct CatalogObligationTests {
         let rule = try CatalogFixture.rule(id)
         #expect(rule.tier == .info)
         #expect(rule.action == .none)
-        #expect(rule.match == .measureOnly)
+        if case .computed = rule.match {
+            #expect(rule.roots.isEmpty)
+        } else {
+            #expect(rule.match == .measureOnly)
+        }
         for root in try CatalogFixture.concreteRoots(rule) {
             let child = CatalogFixture.candidate(root.appending(path: "item", directoryHint: .isDirectory))
             let outcomes = CatalogFixture.evaluate(rule, root: root, [child, CatalogFixture.candidate(root, depth: 0)])
             #expect(CatalogFixture.findings(outcomes).isEmpty, "\(id) \(root.path())")
             #expect(CatalogFixture.skipReasons(outcomes) == [.infoRule, .infoRule], "\(id) \(root.path())")
         }
+    }
+
+    @Test("Owner-command rules walk nothing and offer no item", arguments: CatalogFixture.ownerCommandRuleIDs)
+    func ownerCommandRulesOfferNothing(id: String) throws {
+        let rule = try CatalogFixture.rule(id)
+        #expect(rule.tier != .info)
+        #expect(rule.roots.isEmpty)
+        let somewhere = TestEnv.url("~/Library/Developer/CoreSimulator/Devices")
+        let outcomes = CatalogFixture.evaluate(rule, root: somewhere, [
+            CatalogFixture.candidate(somewhere.appending(path: "item", directoryHint: .isDirectory)),
+        ])
+        #expect(CatalogFixture.findings(outcomes).isEmpty, "\(id)")
+        #expect(CatalogFixture.skipReasons(outcomes) == [.infoRule], "\(id)")
     }
 
     @Test("Placeholder rules offer nothing until their matching exists", arguments: CatalogFixture.inertRuleIDs.sorted())

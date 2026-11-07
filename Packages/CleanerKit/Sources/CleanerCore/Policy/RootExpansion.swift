@@ -34,21 +34,38 @@ public enum RootExpansion {
     ///
     /// - Returns: nil when the base is unknown (for example no Darwin cache
     ///   directory) or a component is unsafe (`""`, `.`, `..`, or contains `/`).
-    ///   Unknown means no root, so nothing is scanned.
+    ///   Unknown means no root, so nothing is scanned. Also nil for `RootSpec.Base.userChosen`,
+    ///   which stands for several folders: use `starts(of:in:)` and `expand(_:from:)`.
     public static func expand(_ spec: RootSpec, in env: Environment) -> ExpandedRoot? {
-        let start: URL
+        guard spec.base != .userChosen, let start = starts(of: spec, in: env).first else { return nil }
+        return expand(spec, from: start)
+    }
+
+    /// The folders a spec's components start from: the one base folder, or each chosen project
+    /// folder for `RootSpec.Base.userChosen`.
+    ///
+    /// Empty when the base is unknown. For project folders, a folder is dropped when the protected
+    /// list covers it or it is a folder we never delete from the top (`/`, `~`, `~/Library`, ...),
+    /// when it is not an absolute file URL, or when it repeats an earlier one.
+    public static func starts(of spec: RootSpec, in env: Environment) -> [URL] {
         switch spec.base {
         case .home:
-            start = env.home
+            return [env.home]
         case .absolute:
-            start = URL(filePath: "/", directoryHint: .isDirectory)
+            return [URL(filePath: "/", directoryHint: .isDirectory)]
         case .darwinUserCache:
-            guard let url = env.darwinUserCache else { return nil }
-            start = url
+            return env.darwinUserCache.map { [$0] } ?? []
         case .darwinUserTemp:
-            guard let url = env.darwinUserTemp else { return nil }
-            start = url
+            return env.darwinUserTemp.map { [$0] } ?? []
+        case .userChosen:
+            return chosenFolders(in: env)
         }
+    }
+
+    /// Expands a spec's components below one starting folder from `starts(of:in:)`.
+    ///
+    /// - Returns: nil when the start is not an absolute file URL or a component is unsafe.
+    public static func expand(_ spec: RootSpec, from start: URL) -> ExpandedRoot? {
         guard PathText.components(of: start) != nil else { return nil }
 
         var base = start
@@ -62,6 +79,21 @@ public enum RootExpansion {
             }
         }
         return ExpandedRoot(base: base, pattern: pattern)
+    }
+
+    private static func chosenFolders(in env: Environment) -> [URL] {
+        let policy = PathPolicy(environment: env, userExclusions: [])
+        var seen: Set<String> = []
+        var folders: [URL] = []
+        for folder in env.projectFolders {
+            guard let parts = PathText.components(of: folder),
+                  policy.protectedReason(for: folder) == nil,
+                  !policy.isRoot(folder, roots: []),
+                  seen.insert(PathText.key(parts.map(PathText.fold))).inserted
+            else { continue }
+            folders.append(folder)
+        }
+        return folders
     }
 
     private static func isSafe(_ component: String) -> Bool {

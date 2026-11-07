@@ -130,7 +130,8 @@ struct MatcherTests {
     }
 
     @Test func rulesThatWalkNothingNeverOfferCandidates() {
-        let command = OwnerCommandSpec(executable: URL(filePath: "/usr/bin/true"), arguments: [], timeout: .seconds(1))
+        let command = OwnerCommandSpec(
+            id: "test.command", executable: URL(filePath: "/usr/bin/true"), arguments: [], timeout: .seconds(1))
         let outcomes = Fixture.evaluate(Fixture.rule(match: .ownerCommand(command)), [Fixture.child("a")])
         #expect(Fixture.summary(outcomes) == ["a:infoRule"])
     }

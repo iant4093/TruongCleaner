@@ -26,6 +26,12 @@ public struct Rule: Sendable, Identifiable, Hashable {
     public let title: LocalizedStringResource
     /// One plain sentence: what it is and what happens if removed.
     public let explain: LocalizedStringResource
+    /// Info rows: the exact command text for the "Copy Command" button. The app never runs it.
+    /// Nil when the sanctioned fix is not a Terminal command.
+    public let sanctionedCommand: String?
+    /// Info rows: the System Settings pane that holds the sanctioned fix, for "Open Settings".
+    /// Nil when the catalog names no pane.
+    public let settingsURL: URL?
 
     /// Creates a rule.
     public init(
@@ -39,7 +45,9 @@ public struct Rule: Sendable, Identifiable, Hashable {
         access: Access,
         action: Action,
         title: LocalizedStringResource,
-        explain: LocalizedStringResource
+        explain: LocalizedStringResource,
+        sanctionedCommand: String? = nil,
+        settingsURL: URL? = nil
     ) {
         self.id = id
         self.category = category
@@ -52,6 +60,18 @@ public struct Rule: Sendable, Identifiable, Hashable {
         self.action = action
         self.title = title
         self.explain = explain
+        self.sanctionedCommand = sanctionedCommand
+        self.settingsURL = settingsURL
+    }
+
+    /// ID of the one rule whose items may be whole `.app` bundles: the macOS installer apps.
+    public static let wholeBundleRuleID = "installers.macOS"
+
+    /// True only for `installers.macOS`. Callers pass it as `GateContext.allowWholeBundle`:
+    /// the installer app may be removed as a whole, and nothing inside any bundle may be touched.
+    /// It is decided by the rule's ID, so no other rule can gain it by accident.
+    public var allowsWholeBundle: Bool {
+        id == Self.wholeBundleRuleID
     }
 
     /// Rules are equal when their IDs are equal. IDs are unique in the catalog.

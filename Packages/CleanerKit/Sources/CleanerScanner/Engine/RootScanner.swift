@@ -34,11 +34,11 @@ private enum Shape {
         }
     }
 
-    /// nil for rules that are not walked (`ownerCommand`).
+    /// nil for rules that are not walked (`ownerCommand`, `computed`).
     init?(_ rule: Rule) {
         let depth = max(1, rule.depth)
         switch rule.match {
-        case .ownerCommand:
+        case .ownerCommand, .computed:
             return nil
         case .measureOnly:
             self = .measure
@@ -116,7 +116,7 @@ enum RootScanner {
         }
 
         let candidates = candidates(from: result, shape: shape, rule: rule, datesUntrusted: outcome.partial)
-        let siblings = rule.guards.requiresSibling.isEmpty ? [:] : siblingNames(in: result)
+        let siblings = rule.guards.needsFolderListings ? siblingNames(in: result) : [:]
         let outcomes = Matcher.evaluate(
             rule: rule,
             root: root,

@@ -281,7 +281,7 @@ struct ScanEngineTests {
         defer { fixture.remove() }
         try fixture.file("Library/Caches/com.a.App/one.bin")
         let command = OwnerCommandSpec(
-            executable: URL(filePath: "/usr/bin/true"), arguments: [], timeout: .seconds(1))
+            id: "test.command", executable: URL(filePath: "/usr/bin/true"), arguments: [], timeout: .seconds(1))
         let rule = makeRule("test.command", roots: [["Library", "Caches"]], match: .ownerCommand(command))
         let (events, report) = await fixture.scan([rule])
         let result = try #require(fixture.result("test.command", in: report))
