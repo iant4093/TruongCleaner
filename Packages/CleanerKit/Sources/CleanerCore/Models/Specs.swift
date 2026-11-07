@@ -33,6 +33,11 @@ public enum OwnerSpec: Sendable, Hashable {
     case bundleID(String)
     /// A command-line process, by executable name.
     case processName(String)
+    /// The candidate's own top-level folder name, read as a bundle identifier when it
+    /// looks like one (at least three dot-separated parts, e.g. `com.example.App`).
+    /// Used by rules such as `user.caches`, where each child folder belongs to one app.
+    /// A name that does not look like a bundle ID has no owner from this spec.
+    case childNameAsBundleID
 }
 
 /// A fixed command that frees space through its owner's own tool.
