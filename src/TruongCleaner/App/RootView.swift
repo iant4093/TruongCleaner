@@ -87,6 +87,8 @@ private struct DetailView: View {
         switch page {
         case .overview:
             OverviewPage(model: model.overview)
+        case .systemData:
+            SystemDataPage(model: model.systemData)
         case .largeFiles:
             LargeFilesPage(model: model.largeFiles)
         case .spaceLens:
