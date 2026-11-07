@@ -205,3 +205,34 @@ artifacts (artifacts containing `.git` are skipped instead), no creation-date ch
 for Mail downloads, no signature check for macOS installers, approximate process
 owners for Gradle (`java`) and npm (`node`). Follow-up 2.4b: nested rule overlap
 (`user.caches` vs `dev.xcodeCaches` etc.) and pruned project walks.
+
+### Tasks 2.6b, 2.4b, 3.5, 3.6, 4.1 review (2026-11-06)
+
+Merged into `main`; keep-both conflicts in `AppModel.swift`/`RootView.swift`
+resolved by the orchestrator. Merged main: lint 0 violations in 122 files,
+deletion-site check PASS, package tests PASS **without** `TC_TIMING_SLACK`, Debug
+app builds and launches.
+
+- 2.6b: one shared `ProcessInspector`; only `ESRCH`/`EPERM` are benign, anything
+  else makes the answer unknown; file and folder answers come from one snapshot;
+  a snapshot that reached < 50% of listed PIDs is unknown; `/private` paths
+  compare equal. Liveness tests 50/50 in a loop; churn stress test never answers
+  `false`. Blocking waits left the cooperative pool (`SupervisedProcess` on
+  dispatch sources); a 60-command burst stays under 150 threads. `scripts/test.sh`
+  gained a whole-run timeout with a `sample` capture. Accepted deviation: a process
+  whose fd list is empty on every pass with no errno (Xcode's `DTServiceHub`)
+  counts like `EPERM`.
+- Orchestrator fix: `DirectoryWalker` checks for stop every 64 entries inside a
+  `getattrlistbulk` batch (2.6b measured ~70 ms per 1,000-entry batch, up to 2 s
+  under load).
+- 2.4b: `SkipReason.coveredByOtherRule` (a broad rule's item that contains another
+  offering rule's root is dropped, so each byte is offered once); `pruneNames`
+  keeps one node per `node_modules`/`target`/… artifact with unchanged totals.
+- 3.5 Smart Clean: scan → grouped results → clean → result sheet with measured
+  change, Put Back, Free Space Now. Orchestrator fix: Smart Clean uses the shared
+  `Services.history`, so `history.jsonl` has one writer.
+- 3.6 Trash and History pages; 4.1 System Data page (all Info rules, Copy Command,
+  Open Settings, Unexplained clamped at 0).
+
+Process note: from this point the host policy blocks `git push` to `main`; changes
+reach `main` through the `integration` branch and a pull request (CI runs on the PR).

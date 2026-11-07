@@ -308,7 +308,11 @@ struct DirectoryWalker {
             }
             if count == 0 { break }
             var entryStart = 0
-            for _ in 0..<Int(count) {
+            for index in 0..<Int(count) {
+                // A 1,000-entry batch can take ~70 ms (more under load); check for stop every
+                // 64 entries so cancellation lands within budget (EVIDENCE, task 2.6b).
+                // The outer loop's stop check then marks the walk incomplete.
+                if index & 63 == 63, context.stop.check() { break }
                 guard entryStart + 4 <= bulkBufferSize else {
                     counters.otherErrors += 1
                     break

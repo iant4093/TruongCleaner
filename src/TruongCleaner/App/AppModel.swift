@@ -45,7 +45,7 @@ final class AppModel {
         self.updates = UpdateChecker(settings: settings)
         let services = Services()
         self.services = services
-        self.smartClean = SmartCleanModel(settings: settings)
+        self.smartClean = SmartCleanModel(settings: settings, services: services)
         self.trash = TrashModel(services: services, settings: settings)
         self.cleanHistory = HistoryModel(services: services)
     }

@@ -76,16 +76,12 @@ final class SmartCleanModel {
     ///
     /// - Parameters:
     ///   - settings: Enabled rules, exclusions and the delete mode.
-    ///   - historyFile: Where cleans are recorded. The default is the app's Application Support folder.
-    init(
-        settings: SettingsStore,
-        historyFile: URL = URL.applicationSupportDirectory
-            .appending(path: "TruongCleaner", directoryHint: .isDirectory)
-            .appending(path: "history.jsonl", directoryHint: .notDirectory)
-    ) {
+    ///   - services: Shared app objects; its `history` is the only writer of `history.jsonl`.
+    init(settings: SettingsStore, services: Services) {
         self.settings = settings
-        self.history = HistoryStore(fileURL: historyFile)
-        self.undo = UndoService(trash: TrashLocations(home: FileManager.default.homeDirectoryForCurrentUser))
+        // One shared HistoryStore (an actor) is the only writer of history.jsonl.
+        self.history = services.history
+        self.undo = UndoService(trash: Services.trashLocations(home: FileManager.default.homeDirectoryForCurrentUser))
     }
 
     // MARK: State
