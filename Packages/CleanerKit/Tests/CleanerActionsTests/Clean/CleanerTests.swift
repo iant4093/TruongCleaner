@@ -76,7 +76,8 @@ struct CleanerTests {
     @Test func run_ownerCommandRuleIsNotRunAsAFileAction() async throws {
         try await withCleanHarness { harness in
             let file = try harness.base.tree.addFile("home/Library/Caches/cmd.bin", size: 10)
-            let command = OwnerCommandSpec(executable: URL(filePath: "/usr/bin/true"), arguments: [], timeout: .seconds(1))
+            let command = OwnerCommandSpec(
+                id: "test.true", executable: URL(filePath: "/usr/bin/true"), arguments: [], timeout: .seconds(1))
             let item = try harness.planned(file, rule: harness.base.rule(action: .ownerCommand(command)))
             for mode in [DeleteMode.trash, .permanent] {
                 let report = await harness.run(CleanPlan(items: [item], mode: mode, permanentConfirmed: true))
