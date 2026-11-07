@@ -25,6 +25,8 @@ struct StorageBar: View {
 
     private static let barHeight: CGFloat = 22
 
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var visibleSegments: [StorageSegment] {
         segments.filter { $0.bytes > 0 }
     }
@@ -53,6 +55,10 @@ struct StorageBar: View {
                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
             .frame(height: Self.barHeight)
+            // Reduce Motion: segments jump to their new size instead of growing.
+            .transaction { transaction in
+                if reduceMotion { transaction.animation = nil }
+            }
 
             legend
         }

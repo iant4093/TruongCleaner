@@ -34,7 +34,7 @@ struct SystemDataPage: View {
                 }
                 HStack {
                     Button {
-                        Task { await model.refresh(settings: appModel.settings, access: appModel.access) }
+                        Task { await model.refresh(settings: appModel.settings) }
                     } label: {
                         Label("Rescan", systemImage: "arrow.clockwise")
                     }
@@ -44,6 +44,12 @@ struct SystemDataPage: View {
                             .controlSize(.small)
                             .accessibilityLabel("Measuring System Data")
                     }
+                }
+            }
+
+            if model.accessChangedSinceLoad, !model.isLoading {
+                Section {
+                    AccessChangedBanner { Task { await model.refresh(settings: appModel.settings) } }
                 }
             }
 
@@ -59,9 +65,10 @@ struct SystemDataPage: View {
             }
         }
         .formStyle(.grouped)
-        // Runs on appear and when Full Disk Access changes. The model skips a load that is still fresh.
-        .task(id: appModel.access) {
-            await model.loadIfNeeded(settings: appModel.settings, access: appModel.access)
+        // Runs on appear. The model skips a load that is still fresh. A change in Full Disk Access
+        // shows a banner; it never starts a scan (REQ-PERM-03).
+        .task {
+            await model.loadIfNeeded(settings: appModel.settings)
         }
     }
 }

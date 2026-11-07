@@ -37,7 +37,11 @@ final class AppModel {
     /// Full Disk Access as of the last probe. Pages that need access read this.
     private(set) var access: AccessState = .unknown
 
+    /// Whether onboarding is on screen. The first launch and Help > Welcome to TruongCleaner set it.
+    var isOnboardingPresented = false
+
     @ObservationIgnored private var isProbingAccess = false
+    @ObservationIgnored private var hasProbedAccess = false
 
     init() {
         let settings = SettingsStore()
@@ -70,6 +74,39 @@ final class AppModel {
                 isEnabled: model.isScanning || model.canScan,
                 perform: { model.isScanning ? model.stopScan() : model.scan() }
             )
+        case .systemData:
+            let model = systemData
+            let settings = settings
+            // A System Data load cannot be stopped, so the button is disabled while it runs.
+            return ToolbarScan(
+                isRunning: false,
+                isEnabled: !model.isLoading,
+                perform: { Task { await model.refresh(settings: settings) } }
+            )
+        case .largeFiles:
+            let model = largeFiles
+            return ToolbarScan(
+                isRunning: model.isSearching,
+                isEnabled: model.isSearching || !model.folders.isEmpty,
+                perform: { model.isSearching ? model.stop() : model.find() }
+            )
+        case .spaceLens:
+            let model = spaceLens
+            return ToolbarScan(
+                isRunning: model.isScanning,
+                isEnabled: true,
+                perform: {
+                    if model.isScanning {
+                        model.cancel()
+                    } else if case .ready = model.state {
+                        model.rescan()
+                    } else {
+                        model.scan()
+                    }
+                }
+            )
+        // TODO(4.5): add `case .developer` that calls `scan()`, `stopScan()`, `isScanning` and
+        // `canScan` on the Developer page's model once it exists (⌘R on Developer).
         default:
             return nil
         }
@@ -86,6 +123,13 @@ final class AppModel {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let state = await AccessProbe.fullDiskAccess(home: home)
         guard !Task.isCancelled else { return }
+        let previous = access
         access = state
+        // Only a real change counts: the first probe replaces the "not probed yet" default.
+        if hasProbedAccess, state == .granted, previous != .granted {
+            smartClean.noteAccessGranted()
+            systemData.noteAccessGranted()
+        }
+        hasProbedAccess = true
     }
 }

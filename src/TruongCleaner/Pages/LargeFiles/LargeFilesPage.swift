@@ -178,7 +178,7 @@ struct LargeFilesPage: View {
             .width(min: 70, ideal: 110)
 
             TableColumn("Size", value: \.allocatedBytes) { row in
-                Text(ByteFormatter.string(row.allocatedBytes)).monospacedDigit()
+                SizeText(bytes: row.allocatedBytes)
             }
             .width(min: 60, ideal: 80)
             .alignment(.numeric)

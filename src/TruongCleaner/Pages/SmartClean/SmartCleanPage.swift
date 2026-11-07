@@ -1,6 +1,7 @@
 import CleanerActions
 import CleanerCore
 import CleanerScanner
+import QuickLook
 import SwiftUI
 
 /// Smart Clean (`docs/UI.md` §4.2): scan, review grouped results, clean.
@@ -96,7 +97,7 @@ struct SmartCleanPage: View {
                 HStack {
                     Spacer()
                     Button("Scan") { model.scan() }
-                        .buttonStyle(.glassProminent)
+                        .modifier(ProminentActionButton())
                         .controlSize(.large)
                         .accessibilityHint("Looks for caches, logs and other items that are safe to remove")
                     Spacer()
@@ -161,6 +162,10 @@ struct SmartCleanPage: View {
                 Section {
                     Label(notice, systemImage: "exclamationmark.triangle")
                 }
+            }
+
+            if model.accessChangedSinceScan, case .results = model.state {
+                Section { AccessChangedBanner { model.scan() } }
             }
 
             if model.sections.isEmpty {
@@ -369,9 +374,10 @@ private struct SmartCleanRuleRow: View {
     }
 }
 
-/// One item under a rule: icon, name, size, Reveal in Finder.
+/// One item under a rule: icon, name, size, Reveal in Finder. Space opens Quick Look.
 private struct ItemRow: View {
     let finding: Finding
+    @State private var quickLookURL: URL?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -394,5 +400,16 @@ private struct ItemRow: View {
             .help("Reveal in Finder")
             .accessibilityLabel("Reveal \(finding.url.lastPathComponent) in Finder")
         }
+        .focusable()
+        .quickLookPreview($quickLookURL)
+        .onKeyPress(.space) {
+            quickLookURL = finding.url
+            return .handled
+        }
+        .contextMenu {
+            Button("Quick Look") { quickLookURL = finding.url }
+            Button("Reveal in Finder") { SmartCleanActions.reveal(finding.url) }
+        }
+        .accessibilityAction(named: "Quick Look") { quickLookURL = finding.url }
     }
 }

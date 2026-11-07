@@ -18,26 +18,34 @@ final class SystemDataModel {
     /// Set when no scan could run. Cleared by the next load.
     private(set) var failure: String?
 
-    @ObservationIgnored private var lastLoad: ContinuousClock.Instant?
-    @ObservationIgnored private var loadedWithAccess: AccessState?
+    /// True when Full Disk Access was granted after the numbers on screen were measured (REQ-PERM-03).
+    /// The page offers a new scan; it never starts one by itself.
+    private(set) var accessChangedSinceLoad = false
 
-    /// Loads unless a recent load already covers this access state.
-    ///
-    /// Call when the page appears and when Full Disk Access changes.
-    func loadIfNeeded(settings: SettingsStore, access: AccessState) async {
-        if report != nil, loadedWithAccess == access,
-           let lastLoad, lastLoad.duration(to: .now) < Self.minimumRefreshInterval {
+    @ObservationIgnored private var lastLoad: ContinuousClock.Instant?
+
+    /// Loads unless a recent load already exists. Call when the page appears.
+    func loadIfNeeded(settings: SettingsStore) async {
+        if report != nil, let lastLoad, lastLoad.duration(to: .now) < Self.minimumRefreshInterval {
             return
         }
-        await refresh(settings: settings, access: access)
+        await refresh(settings: settings)
+    }
+
+    /// Marks the numbers on screen as measured before Full Disk Access was granted.
+    ///
+    /// Does nothing when nothing has been measured yet, because the next load already sees the new access.
+    func noteAccessGranted() {
+        if report != nil || isLoading { accessChangedSinceLoad = true }
     }
 
     /// Measures everything again and replaces ``report``.
     ///
     /// A load that is cancelled (the user left the page) changes nothing, so the next appearance loads again.
-    func refresh(settings: SettingsStore, access: AccessState) async {
+    func refresh(settings: SettingsStore) async {
         guard !isLoading else { return }
         isLoading = true
+        accessChangedSinceLoad = false
         defer { isLoading = false }
 
         // Unknown means keep: an exclusions file we cannot read means we do not scan.
@@ -73,7 +81,6 @@ final class SystemDataModel {
 
         report = SystemDataBuilder.build(inputs)
         lastLoad = .now
-        loadedWithAccess = access
     }
 
     /// Runs the scan and keeps each rule's result by ID. Rules that did not finish have no entry.

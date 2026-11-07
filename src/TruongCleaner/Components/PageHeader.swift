@@ -6,6 +6,8 @@ struct PageHeader: View {
     let color: Color
     let title: String
     let subtitle: String
+    /// The subtitle as VoiceOver should read it, when sizes in it need to be spelled out.
+    var spokenSubtitle: String?
 
     var body: some View {
         HStack(spacing: 16) {
@@ -16,6 +18,8 @@ struct PageHeader: View {
             }
             Spacer(minLength: 0)
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title). \(spokenSubtitle ?? subtitle)")
+        .accessibilityAddTraits(.isHeader)
     }
 }
