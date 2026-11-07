@@ -11,6 +11,21 @@ nonisolated struct CleanInput: Sendable {
     let findings: [Finding]
 }
 
+/// Which rules a ``SmartCleanModel`` offers, and whether it searches the user's project folders.
+///
+/// The default is the Smart Clean page: every offered, enabled rule, no project folders. The Developer
+/// page makes models for its own rules.
+struct SmartCleanScope: Sendable {
+    /// Rule IDs to offer. `nil` offers every rule that Smart Clean offers.
+    var ruleIDs: Set<String>?
+    /// Whether the scan and the gate get the folders from Developer > Project Folders
+    /// (`Environment.projectFolders`). Rules with `RootSpec.Base.userChosen` find nothing without them.
+    var usesProjectFolders = false
+
+    /// The Smart Clean page's scope.
+    static let smartClean = SmartCleanScope()
+}
+
 /// Runs a Smart Clean scan, holds what it found, and drives the clean (`docs/UI.md` §4.2).
 ///
 /// Scanning, cleaning, Put Back and Free Space Now all run off the main actor. This class holds
@@ -65,6 +80,7 @@ final class SmartCleanModel {
     @ObservationIgnored private var cleanTask: Task<Void, Never>?
 
     private let settings: SettingsStore
+    private let scope: SmartCleanScope
     private let engine = ScanEngine()
     private let history: HistoryStore
     private let undo: UndoService
@@ -77,8 +93,10 @@ final class SmartCleanModel {
     /// - Parameters:
     ///   - settings: Enabled rules, exclusions and the delete mode.
     ///   - services: Shared app objects; its `history` is the only writer of `history.jsonl`.
-    init(settings: SettingsStore, services: Services) {
+    ///   - scope: Which rules the model offers. The default is the Smart Clean page.
+    init(settings: SettingsStore, services: Services, scope: SmartCleanScope = .smartClean) {
         self.settings = settings
+        self.scope = scope
         // One shared HistoryStore (an actor) is the only writer of history.jsonl.
         self.history = services.history
         self.undo = UndoService(trash: Services.trashLocations(home: FileManager.default.homeDirectoryForCurrentUser))
@@ -211,7 +229,14 @@ final class SmartCleanModel {
     /// Rules the Smart Clean page offers: enabled rules, minus owner commands and rules that delete
     /// from the Trash itself (`trash.user`), which have their own page.
     private func offeredRules() -> [Rule] {
-        settings.enabledRules.filter(Self.isOffered)
+        settings.enabledRules.filter(Self.isOffered).filter { scope.ruleIDs?.contains($0.id) ?? true }
+    }
+
+    /// Home folder, Darwin directories, the clock and, for a scope that uses them, the project folders.
+    private func makeEnvironment() -> CleanerCore.Environment {
+        var environment = ScanEnvironment.current()
+        if scope.usesProjectFolders { environment.projectFolders = settings.projectFolders }
+        return environment
     }
 
     private static func isOffered(_ rule: Rule) -> Bool {
@@ -242,7 +267,7 @@ final class SmartCleanModel {
             state = .idle
             return
         }
-        let environment = ScanEnvironment.current()
+        let environment = makeEnvironment()
         scanRules = rules
         revision += 1
 
@@ -297,6 +322,29 @@ final class SmartCleanModel {
         guard case .results = state else { return }
         if mode == .permanent, !permanentConfirmed { return }
         let inputs = selectedRows.map { CleanInput(rule: $0.rule, findings: $0.result.findings) }
+        startClean(inputs, mode: mode, permanentConfirmed: permanentConfirmed)
+    }
+
+    /// Cleans only the listed findings of the rows on screen, whatever the rule selection says.
+    ///
+    /// The Developer page uses this to clean chosen projects out of one rule's results. Info rows and
+    /// IDs that are not on screen are ignored.
+    ///
+    /// - Parameters:
+    ///   - findingIDs: The findings to clean.
+    ///   - mode: Move to the Trash or delete for good.
+    ///   - permanentConfirmed: Must be true for `.permanent`, as in ``clean(mode:permanentConfirmed:)``.
+    func clean(findingIDs: Set<UUID>, mode: DeleteMode, permanentConfirmed: Bool = false) {
+        guard case .results = state else { return }
+        if mode == .permanent, !permanentConfirmed { return }
+        let inputs = sections.flatMap(\.rows).filter { $0.isSelectable }.compactMap { row -> CleanInput? in
+            let findings = row.result.findings.filter { findingIDs.contains($0.id) }
+            return findings.isEmpty ? nil : CleanInput(rule: row.rule, findings: findings)
+        }
+        startClean(inputs, mode: mode, permanentConfirmed: permanentConfirmed)
+    }
+
+    private func startClean(_ inputs: [CleanInput], mode: DeleteMode, permanentConfirmed: Bool) {
         guard !inputs.isEmpty else { return }
         notice = nil
         state = .cleaning(nil)
@@ -310,7 +358,7 @@ final class SmartCleanModel {
             state = .results
             return
         }
-        let environment = ScanEnvironment.current()
+        let environment = makeEnvironment()
         let history = self.history
 
         // At most ten updates a second reach the screen; the newest one wins.

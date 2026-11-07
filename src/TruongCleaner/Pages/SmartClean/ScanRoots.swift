@@ -7,6 +7,8 @@ import Foundation
 /// app works them out from the findings. This is pure path arithmetic. It reads no file system.
 ///
 /// - A root without a wildcard is the expanded folder itself.
+/// - A root that stands for the user's project folders (`RootSpec.Base.userChosen`) becomes one
+///   such root for each chosen folder.
 /// - A root with a wildcard becomes the ancestor of each finding that has exactly the depth of
 ///   the root (its base plus one folder per pattern component), starts with the expanded base, and
 ///   fits the root spec. No finding for a root means no folder, so nothing under it can be approved.
@@ -28,20 +30,25 @@ nonisolated enum ScanRoots {
         }
 
         for spec in rule.roots {
-            guard let expanded = RootExpansion.expand(spec, in: environment) else { continue }
-            if let folder = expanded.url {
-                add(folder)
-                continue
-            }
-            let base = withoutPrivatePrefix(parts(of: expanded.base))
-            for finding in findings {
-                let actual = parts(of: finding.url)
-                let comparable = withoutPrivatePrefix(actual)
-                let rootLength = base.count + expanded.pattern.count
-                guard comparable.count > rootLength, comparable.starts(with: base) else { continue }
-                // `/private` is one extra component that the comparison left out.
-                let candidate = folder(from: actual.prefix(rootLength + actual.count - comparable.count))
-                if spec.matches(concreteRoot: candidate) { add(candidate) }
+            // A project-folder root stands for one root per chosen folder; every other base for exactly one.
+            let expandedRoots: [ExpandedRoot] = spec.base == .userChosen
+                ? RootExpansion.starts(of: spec, in: environment).compactMap { RootExpansion.expand(spec, from: $0) }
+                : RootExpansion.expand(spec, in: environment).map { [$0] } ?? []
+            for expanded in expandedRoots {
+                if let folder = expanded.url {
+                    add(folder)
+                    continue
+                }
+                let base = withoutPrivatePrefix(parts(of: expanded.base))
+                for finding in findings {
+                    let actual = parts(of: finding.url)
+                    let comparable = withoutPrivatePrefix(actual)
+                    let rootLength = base.count + expanded.pattern.count
+                    guard comparable.count > rootLength, comparable.starts(with: base) else { continue }
+                    // `/private` is one extra component that the comparison left out.
+                    let candidate = folder(from: actual.prefix(rootLength + actual.count - comparable.count))
+                    if spec.matches(concreteRoot: candidate) { add(candidate) }
+                }
             }
         }
         return result

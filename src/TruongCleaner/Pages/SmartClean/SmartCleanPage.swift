@@ -8,40 +8,12 @@ struct SmartCleanPage: View {
     @Bindable var model: SmartCleanModel
     @SwiftUI.Environment(AppModel.self) private var app
     @State private var showConfirm = false
-    @State private var showPermanentConfirm = false
 
     var body: some View {
         content
             .safeAreaInset(edge: .bottom) { bottomBar }
-            .confirmationDialog(
-                confirmTitle, isPresented: $showConfirm, titleVisibility: .visible
-            ) {
-                switch model.deleteMode {
-                case .trash:
-                    Button("Move to Trash") { model.clean(mode: .trash) }
-                case .permanent:
-                    Button("Delete…", role: .destructive) { showPermanentConfirm = true }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(confirmMessage)
-            }
-            .confirmationDialog(
-                "Delete \(ByteFormatter.string(model.selectedBytes)) permanently?",
-                isPresented: $showPermanentConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Permanently", role: .destructive) {
-                    model.clean(mode: .permanent, permanentConfirmed: true)
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("The space is freed now. Deleted items cannot be put back.")
-            }
-            .sheet(isPresented: resultBinding) {
-                if let report = model.finishedReport {
-                    CleanResultSheet(model: model, report: report)
-                }
+            .cleanFlow(model: model, summary: confirmation, isPresented: $showConfirm) { mode, confirmed in
+                model.clean(mode: mode, permanentConfirmed: confirmed)
             }
     }
 
@@ -244,51 +216,27 @@ struct SmartCleanPage: View {
     }
 
     private var barSummary: String {
-        guard model.selectedItemCount > 0 else { return "Nothing selected" }
-        let size = ByteFormatter.string(model.selectedBytes)
-        switch model.deleteMode {
-        case .trash: return "Move about \(size) to the Trash"
-        case .permanent: return "Delete about \(size)"
-        }
+        CleanBarText.summary(bytes: model.selectedBytes, itemCount: model.selectedItemCount, mode: model.deleteMode)
     }
 
     private var barDetail: String? {
-        guard model.selectedItemCount > 0 else { return nil }
-        return "\(itemsText(model.selectedItemCount)) · at least "
-            + "\(ByteFormatter.string(model.selectedPrivateBytes)) is used by these items alone"
+        CleanBarText.detail(itemCount: model.selectedItemCount, privateBytes: model.selectedPrivateBytes)
     }
 
     // MARK: Confirmation
 
-    private var confirmTitle: String {
-        let size = ByteFormatter.string(model.selectedBytes)
-        switch model.deleteMode {
-        case .trash: return "Move about \(size) to the Trash?"
-        case .permanent: return "Delete about \(size)?"
-        }
-    }
-
-    private var confirmMessage: String {
-        let lines = model.selectedBytesByCategory.map {
-            "\($0.category.smartCleanTitle): \(ByteFormatter.string($0.bytes))"
-        }
-        let footer = switch model.deleteMode {
-        case .trash: "Items go to the Trash. You can put them back."
-        case .permanent: "You will be asked to confirm once more. Deleted items cannot be put back."
-        }
-        return (lines + [footer]).joined(separator: "\n")
-    }
-
-    private var resultBinding: Binding<Bool> {
-        Binding(
-            get: { model.finishedReport != nil },
-            set: { if !$0 { model.dismissResult() } }
+    private var confirmation: CleanConfirmation {
+        CleanConfirmation(
+            bytes: model.selectedBytes,
+            lines: model.selectedBytesByCategory.map {
+                "\($0.category.smartCleanTitle): \(ByteFormatter.string($0.bytes))"
+            }
         )
     }
 }
 
 /// One rule in the results: checkbox, explanation, size, and the items behind it.
-private struct SmartCleanRuleRow: View {
+struct SmartCleanRuleRow: View {
     let row: SmartCleanRow
     let model: SmartCleanModel
     let access: AccessState
@@ -370,7 +318,7 @@ private struct SmartCleanRuleRow: View {
 }
 
 /// One item under a rule: icon, name, size, Reveal in Finder.
-private struct ItemRow: View {
+struct ItemRow: View {
     let finding: Finding
 
     var body: some View {

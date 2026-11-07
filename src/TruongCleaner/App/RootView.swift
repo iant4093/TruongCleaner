@@ -98,6 +98,8 @@ private struct DetailView: View {
             SmartCleanPage(model: model.smartClean)
         case .systemData:
             SystemDataPage(model: model.systemData)
+        case .developer:
+            DeveloperPage(model: model.developer)
         case .largeFiles:
             LargeFilesPage(model: model.largeFiles)
         case .spaceLens:
