@@ -33,7 +33,7 @@ struct DeveloperPage: View {
                 title: "Xcode", ruleIDs: DeveloperRuleIDs.xcode, commandIDs: [],
                 footer: "Build products and caches that Xcode creates again when it needs them.",
                 model: model, access: app.access, pending: $pending)
-            DeveloperSimulatorSection(model: model, pending: $pending)
+            DeveloperSimulatorSection(model: model, access: app.access, pending: $pending)
             DeveloperFileSection(
                 title: "Package managers", ruleIDs: DeveloperRuleIDs.packageManagers,
                 commandIDs: DeveloperRuleIDs.packageCommands,
@@ -56,15 +56,15 @@ struct DeveloperPage: View {
             model.cleanProjects(mode: $0, permanentConfirmed: $1)
         }
         .confirmationDialog(
-            pending.map(Self.dialogTitle) ?? "",
+            pending.map { $0.confirmation(in: model).title } ?? "",
             isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
             titleVisibility: .visible,
             presenting: pending
         ) { action in
-            Button(Self.buttonTitle(action), role: .destructive) { perform(action) }
+            Button(action.confirmation(in: model).buttonTitle, role: .destructive) { perform(action) }
             Button("Cancel", role: .cancel) {}
         } message: { action in
-            Text(message(for: action))
+            Text(action.confirmation(in: model).message)
         }
         .task { await model.loadIfNeeded() }
     }
@@ -155,43 +155,6 @@ struct DeveloperPage: View {
     }
 
     // MARK: Confirmation of commands and deletions
-
-    private static func dialogTitle(_ action: DeveloperAction) -> String {
-        switch action {
-        case .command(_, let title): "\(title)?"
-        case .device(let device): "Delete “\(device.name)”?"
-        case .runtime(let runtime): "Delete the \(runtime.name) runtime?"
-        }
-    }
-
-    private static func buttonTitle(_ action: DeveloperAction) -> String {
-        switch action {
-        case .command: "Run"
-        case .device, .runtime: "Delete"
-        }
-    }
-
-    private func message(for action: DeveloperAction) -> String {
-        switch action {
-        case .command(let command, _):
-            return "TruongCleaner will run:\n\(model.commandText(command))\n\n"
-                + "The tool removes the items itself, so they cannot be put back from the Trash."
-        case .device(let device):
-            return "Deletes this simulator with its apps and data"
-                + sizePhrase(device.size)
-                + ". TruongCleaner will run:\n/usr/bin/xcrun simctl delete \(device.udid)\n\n"
-                + "It cannot be put back."
-        case .runtime(let runtime):
-            return "Deletes the simulator runtime \(runtime.name)"
-                + (runtime.bytes.map { ", about \(ByteFormatter.string($0))" } ?? "")
-                + ". TruongCleaner will run:\n/usr/bin/xcrun simctl runtime delete \(runtime.identifier)\n\n"
-                + "Xcode can download it again."
-        }
-    }
-
-    private func sizePhrase(_ size: MeasuredSize) -> String {
-        if case .bytes(let bytes) = size { ", about \(ByteFormatter.string(bytes))" } else { "" }
-    }
 
     private func perform(_ action: DeveloperAction) {
         switch action {

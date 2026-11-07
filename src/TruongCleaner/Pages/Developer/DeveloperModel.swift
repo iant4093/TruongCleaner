@@ -13,13 +13,7 @@ import os
 @Observable @MainActor
 final class DeveloperModel {
     /// Where the simulator lists stand.
-    enum SimulatorStatus: Equatable {
-        case notLoaded
-        case loading
-        case ready
-        /// The lists cannot be read. Holds the reason in plain words.
-        case unavailable(String)
-    }
+    typealias SimulatorStatus = SimulatorListStatus
 
     private static let log = Logger(subsystem: "com.iant4093.TruongCleaner", category: "developer")
 
@@ -39,8 +33,7 @@ final class DeveloperModel {
     /// Whether Docker Desktop is installed, or `nil` until the page has looked.
     private(set) var dockerDesktopInstalled: Bool?
 
-    /// The last run of each command, by rule ID. In memory only: `HistoryStore` has no entry type for
-    /// owner commands yet, so these are not written to `history.jsonl`.
+    /// The last run of each command, by rule ID, for the row. Every run is also written to `history.jsonl`.
     private(set) var runs: [String: DeveloperCommandRun] = [:]
 
     /// The last simulator or runtime deleted from a table.
@@ -53,6 +46,7 @@ final class DeveloperModel {
     private(set) var selectedProjectFindings: Set<UUID> = []
 
     private let settings: SettingsStore
+    private let history: HistoryStore
     private let runner = OwnerCommandRunner()
     private let commandsByRule: [String: DeveloperCommand]
 
@@ -63,6 +57,7 @@ final class DeveloperModel {
     ///   - services: Shared app objects, passed on to the two file models.
     init(settings: SettingsStore, services: Services) {
         self.settings = settings
+        self.history = services.history
         self.files = SmartCleanModel(
             settings: settings, services: services,
             scope: SmartCleanScope(ruleIDs: DeveloperRuleIDs.scanned))
@@ -120,6 +115,7 @@ final class DeveloperModel {
     func filesConfirmation() -> CleanConfirmation {
         let groups: [(title: String, ids: [String])] = [
             ("Xcode", DeveloperRuleIDs.xcode),
+            ("Simulators", DeveloperRuleIDs.simulatorFiles),
             ("Package managers", DeveloperRuleIDs.packageManagers),
         ]
         let lines = groups.compactMap { group -> String? in
@@ -152,7 +148,7 @@ final class DeveloperModel {
 
         var steps: [DeveloperCommandRun.Step] = []
         for step in command.steps {
-            let result = await runner.run(step.id)
+            let result = await runner.run(step.id, ruleID: command.id, history: history)
             steps.append(DeveloperCommandRun.Step(text: step.text(in: existing), result: result))
             // Docker's second step only follows a first one that worked.
             if !result.succeeded { break }
@@ -168,24 +164,19 @@ final class DeveloperModel {
 
     /// Why simulators cannot be deleted right now, or `nil` when they can.
     var simulatorBlockReason: String? {
-        switch simulatorStatus {
-        case .notLoaded, .loading: "Reading the simulator list…"
-        case .unavailable(let message): message
-        case .ready: devices.contains { !$0.isShutDown } ? "A simulator is running. Quit Simulator first." : nil
-        }
+        DeveloperRowState.simulatorBlockReason(
+            status: simulatorStatus, anySimulatorRunning: devices.contains { !$0.isShutDown })
     }
 
     /// Why this device cannot be deleted, or `nil` when it can.
     func deleteBlockReason(_ device: SimulatorDeviceRow) -> String? {
-        if isBusy { return "Something else is running." }
-        return device.isShutDown ? nil : "This simulator is running. Shut it down first."
+        DeveloperRowState.deviceDeleteBlockReason(isBusy: isBusy, isShutDown: device.isShutDown)
     }
 
     /// Why this runtime cannot be deleted, or `nil` when it can. A running simulator may use it.
     func deleteBlockReason(_ runtime: SimulatorRuntimeRow) -> String? {
-        if isBusy { return "Something else is running." }
-        if !runtime.isDeletable { return "Xcode says this runtime cannot be deleted." }
-        return simulatorBlockReason
+        DeveloperRowState.runtimeDeleteBlockReason(
+            isBusy: isBusy, isDeletable: runtime.isDeletable, simulatorBlockReason: simulatorBlockReason)
     }
 
     /// Reads the device and runtime lists, then measures each device's data folder.
@@ -224,7 +215,8 @@ final class DeveloperModel {
         let key = "device:\(device.udid)"
         running.insert(key)
         defer { running.remove(key) }
-        let result = await runner.deleteSimulator(udid: device.udid)
+        let result = await runner.deleteSimulator(
+            udid: device.udid, ruleID: DeveloperRuleIDs.simulatorDevices, history: history)
         lastItemRun = DeveloperCommandRun(
             steps: [.init(text: "/usr/bin/xcrun simctl delete \(device.udid)", result: result)],
             finishedAt: Date())
@@ -238,7 +230,8 @@ final class DeveloperModel {
         let key = "runtime:\(runtime.identifier)"
         running.insert(key)
         defer { running.remove(key) }
-        let result = await runner.deleteSimulatorRuntime(identifier: runtime.identifier)
+        let result = await runner.deleteSimulatorRuntime(
+            identifier: runtime.identifier, ruleID: DeveloperRuleIDs.simulatorRuntimes, history: history)
         lastItemRun = DeveloperCommandRun(
             steps: [.init(text: "/usr/bin/xcrun simctl runtime delete \(runtime.identifier)", result: result)],
             finishedAt: Date())

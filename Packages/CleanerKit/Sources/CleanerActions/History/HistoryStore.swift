@@ -15,7 +15,9 @@ public enum HistoryError: Error, Sendable, Equatable {
 /// The record of every clean: a JSON Lines file, one object per line.
 ///
 /// Line types: `begin` (the plan, written before the first item), `item` (one per item, written
-/// as soon as its outcome is known), `finish`, `undone` and `freed`. Every line is flushed to disk
+/// as soon as its outcome is known), `finish`, `undone` and `freed`, plus `command` (one owner-command
+/// run, written after it ends). Files from older versions have no `command` lines and read the same.
+/// Every line is flushed to disk
 /// before the call returns, so a crash leaves a readable file. A truncated last line is skipped
 /// on read and never glued to the next line.
 public actor HistoryStore {
@@ -86,7 +88,32 @@ public actor HistoryStore {
                 type: HistoryLine.Kind.freed, cleanID: cleanID, at: Date(), findingID: findingID, path: trashURL))
     }
 
+    /// Writes a `command` line: one owner-command run and what it did.
+    ///
+    /// - Parameters:
+    ///   - result: What the runner returned, including a skipped command.
+    ///   - ruleID: The catalog rule whose action ran.
+    ///   - startedAt: When the run began. Defaults to the time the run took, counted back from now.
+    public func recordCommand(_ result: OwnerCommandResult, ruleID: String, startedAt: Date? = nil) throws {
+        let components = result.duration.components
+        let seconds = Double(components.seconds) + Double(components.attoseconds) / 1e18
+        let began = startedAt ?? Date().addingTimeInterval(-seconds)
+        let record = CommandRecord(startedAt: began, ruleID: ruleID, result: result)
+        try append(HistoryLine(type: HistoryLine.Kind.command, cleanID: record.id, at: began, command: record))
+    }
+
     // MARK: Reading
+
+    /// Every owner-command run in the file, newest first. A file without such lines gives an empty list.
+    /// Dates are stored in whole seconds, so runs that began in the same second keep their file order,
+    /// the later line first.
+    public func commands() throws -> [CommandRecord] {
+        try readLines()
+            .compactMap { $0.type == HistoryLine.Kind.command ? $0.command : nil }
+            .enumerated()
+            .sorted { ($0.element.startedAt, $0.offset) > ($1.element.startedAt, $1.offset) }
+            .map(\.element)
+    }
 
     /// Every clean in the file, newest first. A clean without a `finish` line has `isFinished == false`.
     public func cleans() throws -> [CleanSummary] {

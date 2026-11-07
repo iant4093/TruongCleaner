@@ -1,3 +1,4 @@
+import CleanerActions
 import SwiftUI
 
 /// Something on the Developer page that needs the user's confirmation before it runs.
@@ -12,6 +13,25 @@ enum DeveloperAction: Identifiable {
         case .device(let device): "device:\(device.udid)"
         case .runtime(let runtime): "runtime:\(runtime.identifier)"
         }
+    }
+}
+
+extension DeveloperAction {
+    /// The title, button and message of the confirmation. The wording lives in `DeveloperConfirmation`.
+    @MainActor
+    func confirmation(in model: DeveloperModel) -> DeveloperConfirmation {
+        switch self {
+        case .command(let command, let title):
+            .command(title: title, commandText: model.commandText(command))
+        case .device(let device):
+            .device(name: device.name, udid: device.udid, approximateBytes: Self.bytes(device.size))
+        case .runtime(let runtime):
+            .runtime(name: runtime.name, identifier: runtime.identifier, approximateBytes: runtime.bytes)
+        }
+    }
+
+    private static func bytes(_ size: MeasuredSize) -> Int64? {
+        if case .bytes(let bytes) = size { bytes } else { nil }
     }
 }
 
@@ -42,8 +62,8 @@ struct DeveloperCommandRow: View {
                 Spacer(minLength: 8)
                 trailing
             }
-            if installed != false, let blockReason {
-                Text(blockReason)
+            if let note = state.note {
+                Text(note)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -53,26 +73,30 @@ struct DeveloperCommandRow: View {
         }
     }
 
-    private var installed: Bool? { model.isInstalled(command) }
-
-    private var isRunning: Bool { model.running.contains(command.id) }
+    /// What the trailing side and the note show. The rules live in `DeveloperRowState`.
+    private var state: DeveloperRowState {
+        DeveloperRowState(
+            isInstalled: model.isInstalled(command), isRunning: model.running.contains(command.id),
+            isBusy: model.isBusy, blockReason: blockReason)
+    }
 
     private var displayTitle: String { title ?? String(localized: command.rule.title) }
 
     @ViewBuilder
     private var trailing: some View {
-        if isRunning {
+        switch state.trailing {
+        case .running:
             ProgressView()
                 .controlSize(.small)
                 .accessibilityLabel("Running \(displayTitle)")
-        } else if installed == false {
-            Text("Not installed")
+        case .notInstalled:
+            Text(DeveloperRowState.notInstalledText)
                 .foregroundStyle(.secondary)
-        } else {
+        case .run(let isEnabled):
             Button("Run…") {
                 pending = .command(command, title: displayTitle)
             }
-            .disabled(installed != true || blockReason != nil || model.isBusy)
+            .disabled(!isEnabled)
             .accessibilityLabel("Run \(displayTitle)")
             .accessibilityHint("Asks you to confirm the exact command first")
         }

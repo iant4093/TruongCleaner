@@ -57,6 +57,42 @@ nonisolated struct HistoryItemRow: Identifiable, Sendable {
     }
 }
 
+/// One line of the History list: a clean or an owner-command run.
+nonisolated enum HistoryEntry: Identifiable, Sendable {
+    case clean(CleanSummary)
+    case command(CommandRecord)
+
+    var id: UUID {
+        switch self {
+        case .clean(let clean): clean.id
+        case .command(let record): record.id
+        }
+    }
+
+    var date: Date {
+        switch self {
+        case .clean(let clean): clean.startedAt
+        case .command(let record): record.startedAt
+        }
+    }
+}
+
+extension CommandRecord {
+    /// The command's short name, as History shows it.
+    var title: String { result.id.title }
+
+    /// How the run ended, in one plain line.
+    var statusText: String { result.summaryText }
+
+    /// True when the run finished with exit code 0.
+    var succeeded: Bool { result.succeeded }
+
+    /// The tail of the output, trimmed. Empty when there was none or the command did not run.
+    var output: String {
+        result.skipped == nil ? result.outputTail.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+    }
+}
+
 /// Display text for a clean, kept out of the view so it can be read by VoiceOver as one sentence.
 extension CleanSummary {
     /// "3 moved · 1 skipped", or "Nothing changed".
@@ -99,6 +135,12 @@ nonisolated enum HistoryWork {
     @concurrent
     static func loadCleans(from history: HistoryStore) async throws -> [CleanSummary] {
         try await history.cleans()
+    }
+
+    /// Every owner-command run, newest first.
+    @concurrent
+    static func loadCommands(from history: HistoryStore) async throws -> [CommandRecord] {
+        try await history.commands()
     }
 
     /// The items of one clean, each with what happened to it afterwards.
@@ -144,6 +186,8 @@ struct HistoryMessage: Equatable {
 final class HistoryModel {
     /// Every clean, newest first.
     private(set) var cleans: [CleanSummary] = []
+    /// Every owner-command run, newest first.
+    private(set) var commands: [CommandRecord] = []
     /// The clean whose items are shown.
     var selection: UUID?
     /// Items of the selected clean.
@@ -162,6 +206,14 @@ final class HistoryModel {
     init(services: Services) {
         self.services = services
     }
+
+    /// Cleans and command runs together, newest first.
+    var entries: [HistoryEntry] {
+        (cleans.map(HistoryEntry.clean) + commands.map(HistoryEntry.command)).sorted { $0.date > $1.date }
+    }
+
+    /// Nothing has been recorded: no clean and no command run.
+    var isEmpty: Bool { cleans.isEmpty && commands.isEmpty }
 
     /// The selected clean, if it is still in the list.
     var selectedClean: CleanSummary? {
@@ -199,8 +251,10 @@ final class HistoryModel {
         defer { isLoading = false }
         do {
             let loaded = try await HistoryWork.loadCleans(from: services.history)
+            let loadedCommands = try await HistoryWork.loadCommands(from: services.history)
             guard !Task.isCancelled else { return }
             cleans = loaded
+            commands = loadedCommands
             if selection == nil || selectedClean == nil { selection = loaded.first?.id }
         } catch {
             guard !Task.isCancelled else { return }
