@@ -8,11 +8,14 @@ final class AppModel {
     /// The page shown in the detail column.
     var selection: Page = .overview
 
+    /// The category measurement that the Overview and System Data pages share.
+    let categories: CategoryModel
+
     /// Data for the Overview page.
-    let overview = OverviewModel()
+    let overview: OverviewModel
 
     /// Data for the System Data page.
-    let systemData = SystemDataModel()
+    let systemData: SystemDataModel
 
     /// Data for the Large & Old Files page.
     let largeFiles = LargeFilesModel()
@@ -46,6 +49,10 @@ final class AppModel {
     @ObservationIgnored private var hasProbedAccess = false
 
     init() {
+        let categories = CategoryModel()
+        self.categories = categories
+        self.overview = OverviewModel(categories: categories)
+        self.systemData = SystemDataModel(categories: categories)
         let settings = SettingsStore()
         self.settings = settings
         self.updates = UpdateChecker(settings: settings)

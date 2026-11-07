@@ -94,7 +94,10 @@ nonisolated struct SystemDataRow: Identifiable {
     /// Local snapshots, for the row that expands to list them. `nil` for every other row.
     var snapshots: [LocalSnapshot]?
     /// True when the size is part of what the Unexplained number subtracts.
-    let countsTowardUsed: Bool
+    var countsTowardUsed: Bool
+    /// True when the measured folder lies inside the home folder. The category measurement already
+    /// contains it, so it is not subtracted a second time once categories are known.
+    var isInsideHome = false
 
     /// Symbol and tile color for a rule.
     static func look(ruleID: String) -> (symbol: String, color: Color) {
