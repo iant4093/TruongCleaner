@@ -11,6 +11,9 @@ final class AppModel {
     /// Data for the Overview page.
     let overview = OverviewModel()
 
+    /// Data for the System Data page.
+    let systemData = SystemDataModel()
+
     /// Data for the Large & Old Files page.
     let largeFiles = LargeFilesModel()
     /// Data for the Space Lens page.

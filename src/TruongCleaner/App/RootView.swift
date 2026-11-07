@@ -96,6 +96,8 @@ private struct DetailView: View {
             OverviewPage(model: model.overview)
         case .smartClean:
             SmartCleanPage(model: model.smartClean)
+        case .systemData:
+            SystemDataPage(model: model.systemData)
         case .largeFiles:
             LargeFilesPage(model: model.largeFiles)
         case .spaceLens:
