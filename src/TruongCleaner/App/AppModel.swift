@@ -8,4 +8,7 @@ final class AppModel {
 
     /// Data for the Overview page.
     let overview = OverviewModel()
+
+    /// Data for the Space Lens page.
+    let spaceLens = SpaceLensModel()
 }

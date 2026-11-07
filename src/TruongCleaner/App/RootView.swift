@@ -87,6 +87,8 @@ private struct DetailView: View {
         switch page {
         case .overview:
             OverviewPage(model: model.overview)
+        case .spaceLens:
+            SpaceLensPage(model: model.spaceLens)
         default:
             placeholder
         }
