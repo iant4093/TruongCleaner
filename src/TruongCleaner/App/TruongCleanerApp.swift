@@ -12,13 +12,29 @@ struct TruongCleanerApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .modifier(ActivationChecks(model: model))
         }
         .defaultSize(width: 900, height: 620)
 
         Settings {
-            Form {}
-                .formStyle(.grouped)
-                .frame(width: 450, height: 300)
+            SettingsView()
+                .environment(model)
+                .modifier(ActivationChecks(model: model))
+        }
+    }
+}
+
+/// Probes Full Disk Access whenever the scene becomes active (REQ-PERM-03), and checks for a
+/// newer build when one is due (at most once a day, only if the user allows it).
+private struct ActivationChecks: ViewModifier {
+    let model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
+
+    func body(content: Content) -> some View {
+        content.task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await model.refreshAccess()
+            await model.updates.checkIfDue()
         }
     }
 }

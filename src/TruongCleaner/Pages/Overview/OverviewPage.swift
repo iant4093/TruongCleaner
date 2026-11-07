@@ -3,10 +3,14 @@ import SwiftUI
 /// Startup disk overview, modeled on System Settings > Storage (`docs/UI.md` §4.1).
 struct OverviewPage: View {
     let model: OverviewModel
+    @Environment(AppModel.self) private var appModel
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Form {
+            if let release = appModel.updates.available {
+                Section { UpdateBanner(release: release, onDismiss: appModel.updates.dismiss) }
+            }
             switch model.state {
             case .loading:
                 Section {
