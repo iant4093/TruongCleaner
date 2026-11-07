@@ -1,5 +1,6 @@
 import CleanerScanner
 import Foundation
+import os
 
 /// Runs the fixed cleanup commands that some rules delegate to (`REQ-CLEAN-07`, `safety.md` rule 14).
 ///
@@ -58,6 +59,56 @@ public struct OwnerCommandRunner: Sendable {
             return Self.skipped(id, "not an allowed command", started: ContinuousClock.now)
         }
         return await execute(definition)
+    }
+
+    /// Runs an allow-listed command and records the run in `history`.
+    ///
+    /// The record is written after the run ends, also when the command was skipped. A history write that
+    /// fails does not change the result: the command did run (or did not), and the caller still gets the truth.
+    ///
+    /// - Parameters:
+    ///   - id: A key of ``OwnerCommands/all``.
+    ///   - ruleID: The catalog rule whose action this is.
+    ///   - history: Where to record the run. `nil` records nothing.
+    @concurrent
+    public func run(_ id: OwnerCommandID, ruleID: String, history: HistoryStore?) async -> OwnerCommandResult {
+        let startedAt = Date()
+        let result = await run(id)
+        await Self.record(result, ruleID: ruleID, startedAt: startedAt, in: history)
+        return result
+    }
+
+    /// Deletes one simulator device (see ``deleteSimulator(udid:)``) and records the run in `history`.
+    @concurrent
+    public func deleteSimulator(udid: String, ruleID: String, history: HistoryStore?) async -> OwnerCommandResult {
+        let startedAt = Date()
+        let result = await deleteSimulator(udid: udid)
+        await Self.record(result, ruleID: ruleID, startedAt: startedAt, in: history)
+        return result
+    }
+
+    /// Deletes one simulator runtime (see ``deleteSimulatorRuntime(identifier:)``) and records the run in `history`.
+    @concurrent
+    public func deleteSimulatorRuntime(
+        identifier: String, ruleID: String, history: HistoryStore?
+    ) async -> OwnerCommandResult {
+        let startedAt = Date()
+        let result = await deleteSimulatorRuntime(identifier: identifier)
+        await Self.record(result, ruleID: ruleID, startedAt: startedAt, in: history)
+        return result
+    }
+
+    private static let log = Logger(subsystem: "com.iant4093.TruongCleaner", category: "owner-command")
+
+    private static func record(
+        _ result: OwnerCommandResult, ruleID: String, startedAt: Date, in history: HistoryStore?
+    ) async {
+        guard let history else { return }
+        do {
+            try await history.recordCommand(result, ruleID: ruleID, startedAt: startedAt)
+        } catch {
+            log.error("Could not record owner command \(result.id.rawValue, privacy: .public) in history")
+        }
     }
 
     /// Deletes one simulator device with `xcrun simctl delete <udid>`.

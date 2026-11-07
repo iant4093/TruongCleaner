@@ -28,6 +28,9 @@ enum DeveloperRuleIDs {
         "dev.androidCaches",
     ]
 
+    /// File rules in the Simulators section.
+    static let simulatorFiles = ["dev.simCaches"]
+
     /// Owner-command rules in the Package managers section, in display order.
     static let packageCommands = ["dev.homebrew", "dev.pnpm", "dev.go", "dev.goModules"]
 
@@ -40,9 +43,15 @@ enum DeveloperRuleIDs {
     /// The simulator command rule behind "Delete Unavailable Simulators".
     static let simulatorCommand = "dev.simUnavailable"
 
+    /// The rule behind deleting one simulator device.
+    static let simulatorDevices = "dev.simDevices"
+
+    /// The rule behind deleting one simulator runtime.
+    static let simulatorRuntimes = "dev.simRuntimes"
+
     /// The rule that looks for build folders inside project folders.
     static let projects = "dev.projectArtifacts"
 
     /// Rules the page's main scan walks: file rules plus the Docker Info rule.
-    static let scanned = Set(xcode + packageManagers + [dockerInfo])
+    static let scanned = Set(xcode + simulatorFiles + packageManagers + [dockerInfo])
 }

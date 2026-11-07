@@ -80,19 +80,11 @@ nonisolated struct DeveloperCommandRun: Sendable {
     var succeeded: Bool { !steps.isEmpty && steps.allSatisfy(\.result.succeeded) }
 
     /// True when the tool is not on this Mac.
-    var toolMissing: Bool { deciding?.result.skipped == "tool not found" }
+    var toolMissing: Bool { deciding?.result.isToolMissing == true }
 
     /// One line in plain words.
     var summary: String {
-        guard let step = deciding else { return "Nothing ran" }
-        let result = step.result
-        if let reason = result.skipped {
-            if reason == "tool not found" { return "Not installed" }
-            return "Not run: \(reason)"
-        }
-        if result.timedOut { return "Timed out and was stopped" }
-        guard let code = result.exitCode else { return "Stopped before it finished" }
-        return code == 0 ? "Finished" : "Failed (exit code \(code))"
+        deciding?.result.summaryText ?? "Nothing ran"
     }
 
     /// The output of every step that ran, each under its command.

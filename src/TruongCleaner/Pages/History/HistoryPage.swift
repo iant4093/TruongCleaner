@@ -24,7 +24,7 @@ struct HistoryPage: View {
 
     @ViewBuilder
     private var content: some View {
-        if model.cleans.isEmpty {
+        if model.isEmpty {
             if model.isLoading {
                 ProgressView()
                     .controlSize(.small)
@@ -40,7 +40,9 @@ struct HistoryPage: View {
                 ContentUnavailableView(
                     "No Cleans Yet",
                     systemImage: Page.history.symbol,
-                    description: Text("When you clean, each item is listed here, so you can see what happened and put items back.")
+                    description: Text(
+                        "When you clean, each item is listed here, so you can see what happened and put items back. "
+                            + "Commands you run on the Developer page are listed here too.")
                 )
             }
         } else {
@@ -56,11 +58,21 @@ struct HistoryPage: View {
     // MARK: Cleans
 
     private var cleanList: some View {
-        List(model.cleans, selection: $model.selection) { clean in
-            CleanRow(clean: clean)
-                .tag(clean.id)
+        List(selection: $model.selection) {
+            ForEach(model.entries) { entry in
+                switch entry {
+                case .clean(let clean):
+                    CleanRow(clean: clean)
+                        .tag(clean.id)
+                case .command(let record):
+                    // A command has no items to show below, so its row is not selectable. Its output
+                    // opens in the row.
+                    CommandRow(record: record)
+                        .selectionDisabled()
+                }
+            }
         }
-        .accessibilityLabel("Cleans, newest first")
+        .accessibilityLabel("Cleans and commands, newest first")
     }
 
     // MARK: Items
@@ -214,5 +226,54 @@ private struct CleanRow: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// One owner-command run in the list: date, command, how it ended, and the output in a disclosure.
+private struct CommandRow: View {
+    let record: CommandRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(record.startedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.headline)
+                        Text("Command")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(.quaternary, in: Capsule())
+                    }
+                    Text(record.title)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Label {
+                    Text(record.statusText)
+                } icon: {
+                    Image(systemName: record.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(record.succeeded ? .green : .orange)
+                }
+                .font(.callout)
+            }
+            if !record.output.isEmpty {
+                DisclosureGroup("Output") {
+                    ScrollView {
+                        Text(record.output)
+                            .font(.system(.callout, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 140)
+                }
+                .font(.callout)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(record.title), \(record.statusText)")
     }
 }
