@@ -105,4 +105,4 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 8.0 | I | | Hand checks: install, FDA, Storage numbers, look, real clean + put back + Free Space Now (history: 1,051 moved, 0 failed) | — |
 | [x] | 8.1 | B | a | Shared row layout for Smart Clean, Developer, System Data; friendly app names in skip reasons | UI-02, UI-06 |
 | [x] | 8.2 | B | b | Install updates from Settings and the Overview banner | DIST-04 |
-| [~] | 8.3 | B | | Row polish follow-ups: System Data gap, FDA footer, applets, admin reasons, app sort | UI-02 |
+| [x] | 8.3 | B | | Row polish follow-ups: System Data gap, FDA footer, applets, admin reasons, app sort | UI-02 |

@@ -338,3 +338,20 @@ and later freed, 200 deleted permanently (Empty Trash), 101 skipped with reasons
   showing "Needs an administrator" in the agent's screenshot are user-owned; the
   agent sandbox makes `/Applications` look unwritable, so Ian should confirm on
   his own launch.
+
+### Task 8.3 review and CI fix (2026-11-09)
+
+8.3: System Data rows no longer reserve unused chevron/checkbox columns; one
+"Some folders need Full Disk Access" footer per section with the button in the
+action column; Script Editor/Automator applets (ad-hoc or Developer ID) can be
+uninstalled with exact bundle-ID evidence only; refusal reasons split into
+"Owned by another user" and "Can't change the Applications folder"; app sort by
+name/size. Orchestrator checked the 1100 × 720 screenshots. Catalog text "Shown
+for size only in v1" replaced with "Only macOS can clean them".
+
+CI failure on PR #8: on the shared runner, open-files answers for idle files came
+back `nil` (unknown, item kept) instead of `false`, and a date check allowed only
+2 s while the test took 4.5 s. Tests now accept `nil` for "not open" only when
+`CI=true` (`Tests/Fixtures/LivenessExpectation.swift`); a `true` still fails
+everywhere; date tolerance 120 s. Merged main: lint 0 violations in 179 files,
+deletion-site PASS, package tests PASS, Release 4.8 MB.
