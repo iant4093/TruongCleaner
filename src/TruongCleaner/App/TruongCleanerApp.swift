@@ -11,6 +11,8 @@ struct TruongCleanerApp: App {
         if let page = launch.page { model.selection = page }
         self.launch = launch
         self.model = model
+        // Tidy up after an earlier in-app update (old app to the Trash, stale temp folders).
+        Task { await UpdateChecker.removeLeftovers() }
     }
 
     var body: some Scene {

@@ -5,6 +5,7 @@ struct UpdateBanner: View {
     let release: ReleaseInfo
     let onDismiss: () -> Void
     @Environment(\.openURL) private var openURL
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         HStack(spacing: 12) {
@@ -15,11 +16,16 @@ struct UpdateBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("TruongCleaner Build \(release.buildNumber) is available")
                     .font(.headline)
-                Text("Copy the install command and run it in Terminal, or read the release notes.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                progressOrHint
             }
             Spacer(minLength: 8)
+            if model.updates.canCancelInstall {
+                Button("Cancel") { model.updates.cancelInstall() }
+            }
+            Button("Install Update") { model.updates.install() }
+                .buttonStyle(.borderedProminent)
+                .disabled(!model.updates.canInstall)
+                .help(model.updates.installBlocker ?? "Download, check and install this build, then reopen")
             Button("Copy Install Command") { SettingsActions.copy(UpdateChecker.installCommand) }
             Button("View Release") { openURL(release.pageURL) }
                 .help(release.name)
@@ -27,6 +33,29 @@ struct UpdateBanner: View {
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .help("Hide until the next build")
+        }
+    }
+
+    @ViewBuilder
+    private var progressOrHint: some View {
+        switch model.updates.installState {
+        case .idle:
+            Text(
+                model.updates.installBlocker
+                    ?? "Install it here, or copy the command for Terminal. macOS may ask for Full Disk Access again afterwards."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        case .downloading(let fraction):
+            ProgressView(value: fraction) { Text("Downloading…") }
+        case .verifying:
+            ProgressView { Text("Checking the download…") }
+        case .ready, .installing:
+            ProgressView { Text("Installing and reopening…") }
+        case .failed(let message):
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.red)
         }
     }
 }
