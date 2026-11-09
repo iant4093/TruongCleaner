@@ -149,7 +149,7 @@ struct CleanResultSheet: View {
     }
 
     private var skippedGroups: [SkippedGroup] {
-        Dictionary(grouping: report.skippedItems, by: { $0.reason.userMessage })
+        Dictionary(grouping: report.skippedItems, by: { $0.reason.displayMessage })
             .map { SkippedGroup(reason: $0.key, items: $0.value.map(\.item)) }
             .sorted { ($0.items.count, $1.reason) > ($1.items.count, $0.reason) }
     }

@@ -100,7 +100,7 @@ struct LivenessProviderTests {
         // A test running in parallel may be spawning a child at this moment. Until its exec, the
         // child holds a copy of every descriptor, so "still open" can be briefly stale. That is the
         // safe direction; the answer must settle on `false`.
-        #expect(await eventually { await provider.hasOpenFiles(under: file) == false })
+        #expect(await eventually { reportsNotOpen(await provider.hasOpenFiles(under: file)) })
     }
 
     @Test func openFiles_hardLinkToAnOpenFileIsFoundByIdentity() async throws {
@@ -132,7 +132,7 @@ struct LivenessProviderTests {
         defer { close(descriptor) }
         // Settles on `false` (see the note in the "own handle" test about parallel spawns).
         let provider = ProcessOpenFilesProvider()
-        #expect(await eventually { await provider.hasOpenFiles(under: file) == false })
+        #expect(await eventually { reportsNotOpen(await provider.hasOpenFiles(under: file)) })
     }
 
     @Test func openFiles_anotherProcessHoldingAFileIsSeenForTheFileAndItsFolders() async throws {
@@ -149,11 +149,11 @@ struct LivenessProviderTests {
         #expect(await provider.hasOpenFiles(under: tree.url(for: "logs")) == true)
         // An unrelated sibling does not.
         let other = try tree.addFile("other/idle.bin", size: 10)
-        #expect(await provider.hasOpenFiles(under: other) == false)
-        #expect(await provider.hasOpenFiles(under: tree.url(for: "other")) == false)
+        #expect(reportsNotOpen(await provider.hasOpenFiles(under: other)))
+        #expect(reportsNotOpen(await provider.hasOpenFiles(under: tree.url(for: "other"))))
 
         await child.stop()
-        #expect(await eventually { await provider.hasOpenFiles(under: file) == false })
+        #expect(await eventually { reportsNotOpen(await provider.hasOpenFiles(under: file)) })
     }
 
     @Test func openFiles_folderAnswersStayConsistentUnderChurn() async throws {

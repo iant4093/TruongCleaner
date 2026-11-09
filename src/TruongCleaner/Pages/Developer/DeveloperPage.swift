@@ -44,6 +44,7 @@ struct DeveloperPage: View {
                 model: model, settings: app.settings, access: app.access, showConfirm: $showProjectsConfirm)
         }
         .formStyle(.grouped)
+        .itemRowActionColumn(.compactButton)
         .disabled(model.files.isCleaning || model.projects.isCleaning)
         .safeAreaInset(edge: .bottom) { bottomBar }
         .cleanFlow(model: model.files, summary: model.filesConfirmation(), isPresented: $showFilesConfirm) {
@@ -104,7 +105,8 @@ struct DeveloperPage: View {
                 DeveloperCommandRow(command: command, model: model, pending: $pending)
             }
             if let row = model.rows([DeveloperRuleIDs.dockerInfo]).first {
-                SmartCleanRuleRow(row: row, model: model.files, access: app.access)
+                SmartCleanRuleRow(row: row, model: model.files)
+                SectionAccessFooter(rows: [row], access: app.access)
             } else {
                 Text(dockerImageNote)
                     .foregroundStyle(.secondary)
@@ -188,30 +190,23 @@ struct DeveloperFileSection: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(rows) { row in
-                SmartCleanRuleRow(row: row, model: model.files, access: access)
+                SmartCleanRuleRow(row: row, model: model.files)
             }
+            SectionAccessFooter(rows: rows, access: access)
             ForEach(commandIDs.compactMap(model.command)) { command in
                 DeveloperCommandRow(command: command, model: model, pending: $pending)
             }
         } header: {
-            HStack {
-                if section.selectableRows.isEmpty {
-                    Text(title)
-                } else {
-                    Toggle(
-                        title,
-                        isOn: Binding(
-                            get: { model.files.isSelected(section) },
-                            set: { model.files.setSelected($0, for: section) }
-                        )
-                    )
-                    .toggleStyle(.checkbox)
-                    .accessibilityLabel("Select all in \(title)")
-                }
-                Spacer()
-                SizeText(bytes: section.bytes)
-                    .foregroundStyle(.secondary)
-            }
+            ItemRowSectionHeader(
+                title: title,
+                selection: section.selectableRows.isEmpty
+                    ? nil
+                    : Binding(
+                        get: { model.files.isSelected(section) },
+                        set: { model.files.setSelected($0, for: section) }
+                    ),
+                bytes: section.bytes
+            )
         } footer: {
             Text(footer)
         }

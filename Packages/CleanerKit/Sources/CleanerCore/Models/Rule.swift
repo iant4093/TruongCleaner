@@ -64,14 +64,17 @@ public struct Rule: Sendable, Identifiable, Hashable {
         self.settingsURL = settingsURL
     }
 
-    /// ID of the one rule whose items may be whole `.app` bundles: the macOS installer apps.
+    /// ID of the catalog rule whose items may be whole `.app` bundles: the macOS installer apps.
     public static let wholeBundleRuleID = "installers.macOS"
 
-    /// True only for `installers.macOS`. Callers pass it as `GateContext.allowWholeBundle`:
-    /// the installer app may be removed as a whole, and nothing inside any bundle may be touched.
-    /// It is decided by the rule's ID, so no other rule can gain it by accident.
+    /// ID of the synthetic rule built by `UninstallRule`, the second rule that may remove a whole `.app`.
+    public static let uninstallRuleID = "apps.uninstall"
+
+    /// True only for `installers.macOS` and `apps.uninstall`. Callers pass it as
+    /// `GateContext.allowWholeBundle`: the app may be removed as a whole, and nothing inside any bundle
+    /// may be touched. It is decided by the rule's ID, so no other rule can gain it by accident.
     public var allowsWholeBundle: Bool {
-        id == Self.wholeBundleRuleID
+        id == Self.wholeBundleRuleID || id == Self.uninstallRuleID
     }
 
     /// Rules are equal when their IDs are equal. IDs are unique in the catalog.

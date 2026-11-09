@@ -34,6 +34,12 @@ nonisolated struct HistoryItemRow: Identifiable, Sendable {
 
     /// What happened, in plain words. Skipped items say why.
     var outcome: String {
+        text(skipText: { $0.userMessage })
+    }
+
+    /// `outcome`, with `skipText` writing the reason of a skipped item. The page passes a writer that shows
+    /// app names instead of bundle IDs.
+    func text(skipText: (DenyReason) -> String) -> String {
         switch report.outcome {
         case .moved:
             switch putBackState {
@@ -42,7 +48,7 @@ nonisolated struct HistoryItemRow: Identifiable, Sendable {
             case .available, .notApplicable: "Moved to the Trash"
             }
         case .deleted: "Deleted"
-        case .skipped(let reason): "Skipped: \(reason.userMessage)"
+        case .skipped(let reason): "Skipped: \(skipText(reason))"
         case .failed(let message): "Failed: \(message)"
         }
     }
@@ -235,8 +241,9 @@ final class HistoryModel {
 
     /// The Outcome column: what happened, plus why a Put Back was refused.
     func outcomeText(for row: HistoryItemRow) -> String {
-        guard let refusal = refusals[row.id] else { return row.outcome }
-        return "\(row.outcome). Cannot put back: \(refusal)"
+        let outcome = row.text(skipText: { $0.displayMessage })
+        guard let refusal = refusals[row.id] else { return outcome }
+        return "\(outcome). Cannot put back: \(refusal)"
     }
 
     /// Called when the page appears. Old refusals are dropped, because the Trash may have changed.

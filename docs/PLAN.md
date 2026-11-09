@@ -52,6 +52,7 @@ every action, and can undo it.
 | D17 | Signing: **ad-hoc** for now (Q1). | $0 and no secrets, like TruongCam. Developer ID later changes the path in section 6. |
 | D18 | License: **MIT** (Q4). | Same as FrankenTTY. |
 | D19 | Updates: notify-only checker, no Sparkle (Q2). App Uninstaller after 1.0 (Q3). Orchestrator may push to `main` (Q5). | Ian, 2026-11-06. |
+| D20 | Updates install from inside the app (Settings > General, Overview banner): download, SHA-256 check, signature check, swap the bundle, relaunch. Still no Sparkle. App Uninstaller moves into 1.0 (`docs/UNINSTALLER.md`). | Ian, 2026-11-09. |
 
 ---
 

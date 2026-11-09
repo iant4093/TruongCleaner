@@ -50,6 +50,11 @@ if the rule is removed. Reviews reject any change that weakens one.
 15. **Dry run = real run.** Preview and clean use the same `SafetyGate`
     checks. The only difference is the final executor call.
 16. **Info rows never delete.** A rule with tier Info has no action.
+16a. **Self-update exception.** `CleanerActions/Update/` may rename the running
+    TruongCleaner bundle, move a verified new bundle into its place, and later move
+    old `.TruongCleaner-old-*.app` bundles (bundle ID checked) to the Trash. These
+    paths touch only TruongCleaner's own bundle and do not go through `SafetyGate`
+    (approved 2026-11-09, task 8.2).
 
 ## For agents working in this repo
 

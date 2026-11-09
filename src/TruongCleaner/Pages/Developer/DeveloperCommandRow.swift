@@ -47,21 +47,15 @@ struct DeveloperCommandRow: View {
     @Binding var pending: DeveloperAction?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 1) {
-                    if let title {
-                        Text(title)
-                    } else {
-                        Text(command.rule.title)
-                    }
-                    Text(command.rule.explain)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                trailing
-            }
+        ItemRow(
+            icon: .rule(command.rule),
+            title: displayTitle,
+            explain: String(localized: command.rule.explain)
+        )
+        .trailing {
+            trailing
+        }
+        .footer {
             if let note = state.note {
                 Text(note)
                     .font(.callout)
@@ -91,14 +85,20 @@ struct DeveloperCommandRow: View {
                 .accessibilityLabel("Running \(displayTitle)")
         case .notInstalled:
             Text(DeveloperRowState.notInstalledText)
+                .font(.callout)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
         case .run(let isEnabled):
-            Button("Run…") {
-                pending = .command(command, title: displayTitle)
-            }
-            .disabled(!isEnabled)
-            .accessibilityLabel("Run \(displayTitle)")
-            .accessibilityHint("Asks you to confirm the exact command first")
+            ItemRowActions(actions: [
+                ItemRowAction(
+                    title: "Run…",
+                    isDisabled: !isEnabled,
+                    accessibilityLabel: "Run \(displayTitle)",
+                    accessibilityHint: "Asks you to confirm the exact command first"
+                ) {
+                    pending = .command(command, title: displayTitle)
+                },
+            ])
         }
     }
 }

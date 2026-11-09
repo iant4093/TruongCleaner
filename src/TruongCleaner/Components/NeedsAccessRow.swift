@@ -1,8 +1,16 @@
 import SwiftUI
 
-/// A row that says why a size is missing: macOS would not let the app open a folder.
+/// One line that says why sizes are missing: macOS would not let the app open some folders.
 ///
 /// A size that could not be read is unknown, not zero (REQ-SCAN-04).
+///
+/// ```text
+/// 🔒 Some folders need Full Disk Access                         [Open Privacy Settings]
+/// ```
+///
+/// The line starts at the titles of the rows above it (`itemRowLeadingColumns`) and its button ends at the
+/// same x as their actions. Put one under the last row of a section, not one per row. The longer
+/// explanation is in the tooltip and read by VoiceOver.
 struct NeedsAccessRow: View {
     /// What kind of access is missing.
     enum Kind {
@@ -19,41 +27,50 @@ struct NeedsAccessRow: View {
     var openPrivacySettings: () -> Bool = { false }
 
     @State private var showFallback = false
+    @SwiftUI.Environment(\.itemRowLeadingColumns) private var leading
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Label {
                     Text(title)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 } icon: {
                     Image(systemName: "lock.fill").foregroundStyle(.orange)
                 }
-                Spacer(minLength: 8)
+                .font(.callout)
+                .help(detail)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if kind == .fullDiskAccess {
                     Button("Open Privacy Settings") {
                         showFallback = !openPrivacySettings()
                     }
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .fixedSize()
+                    .help(detail)
                     .accessibilityHint("Opens System Settings so you can turn on Full Disk Access")
                 }
             }
-            Text(detail)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             if showFallback {
                 Text("Open System Settings > Privacy & Security > Full Disk Access and turn on TruongCleaner.")
                     .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .padding(.leading, ItemRowMetrics.titleOffset(for: leading))
         .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+        .accessibilityHint(detail)
     }
 
     private var title: String {
         switch kind {
-        case .fullDiskAccess: "Needs Full Disk Access"
-        case .refusedByMacOS: "macOS did not allow access"
-        case .administratorOnly: "Only macOS can read this"
+        case .fullDiskAccess: "Some folders need Full Disk Access"
+        case .refusedByMacOS: "macOS did not allow access to some folders"
+        case .administratorOnly: "Only an administrator can read some folders"
         }
     }
 
@@ -64,7 +81,7 @@ struct NeedsAccessRow: View {
         case .refusedByMacOS:
             "Full Disk Access is on, but macOS still refused some folders. Their size is unknown, not zero."
         case .administratorOnly:
-            "This needs an administrator. TruongCleaner does not change it."
+            "This needs an administrator. TruongCleaner does not change it. The size is unknown, not zero."
         }
     }
 }

@@ -122,37 +122,26 @@ struct DeveloperProjectsSection: View {
     }
 
     private func groupRow(_ group: DeveloperModel.ProjectGroup) -> some View {
-        DisclosureGroup {
+        ItemRow(
+            icon: ItemRowIcon(symbol: "folder.fill", color: .blue),
+            title: group.name,
+            explain: subtitle(group),
+            size: .bytes(group.bytes)
+        )
+        .selection(
+            Binding(
+                get: { model.isSelected(group) },
+                set: { model.setSelected($0, for: group) }
+            )
+        )
+        .badge(.review)
+        .disclosure {
             ForEach(group.findings.prefix(Self.listLimit)) { finding in
-                ItemRow(finding: finding)
+                FindingRow(finding: finding)
             }
             if group.findings.count > Self.listLimit {
                 Text("and \((group.findings.count - Self.listLimit).formatted()) more")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Toggle(
-                    isOn: Binding(
-                        get: { model.isSelected(group) },
-                        set: { model.setSelected($0, for: group) }
-                    )
-                ) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(group.name)
-                        Text(subtitle(group))
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.checkbox)
-                .accessibilityLabel("\(group.name), \(SizeText.spoken(group.bytes))")
-                Spacer(minLength: 8)
-                Text("Review")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                SizeText(bytes: group.bytes)
                     .foregroundStyle(.secondary)
             }
         }

@@ -158,6 +158,6 @@ enum CachesRules {
         access: .root,
         action: .none,
         title: "Shared system caches",
-        explain: "Shared caches owned by the system or other users. Shown for size only in v1."
+        explain: "Shared caches owned by the system or other users. Only macOS can clean them."
     )
 }

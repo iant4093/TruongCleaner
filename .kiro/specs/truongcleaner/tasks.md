@@ -85,8 +85,8 @@ brief in `docs/briefs/<id>.md`.
 
 | ✓ | ID | Owner | Par | Task |
 |---|---|---|---|---|
-| [ ] | 6.1 | O | | Write the uninstaller spec (search roots, whole-name and bundle-ID matching, Apple-prefix exclusion, shared vendor folders, receipts) |
-| [ ] | 6.2 | B | | Implement with regression tests for Pearcleaner #506, #571, #587, #618 and Lemon's short-bundle-ID bug |
+| [x] | 6.1 | O | | Write the uninstaller spec (search roots, whole-name and bundle-ID matching, Apple-prefix exclusion, shared vendor folders, receipts) |
+| [x] | 6.2 | B | | Implement with regression tests for Pearcleaner #506, #571, #587, #618 and Lemon's short-bundle-ID bug |
 
 ## Wave 7: Polish + 1.0
 
@@ -97,3 +97,12 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 7.3 | B | c | App icon (Icon Composer), screenshots in `docs/screenshots/` (webp) | — |
 | [ ] | 7.4 | O | | Final README, release notes, v1.0.0 | — |
 | [ ] | 7.5 | I | | Full hand test on Ian's Mac ✋ | — |
+
+## Wave 8: Feedback from Ian's hand checks (2026-11-09)
+
+| ✓ | ID | Owner | Par | Task | Reqs |
+|---|---|---|---|---|---|
+| [x] | 8.0 | I | | Hand checks: install, FDA, Storage numbers, look, real clean + put back + Free Space Now (history: 1,051 moved, 0 failed) | — |
+| [x] | 8.1 | B | a | Shared row layout for Smart Clean, Developer, System Data; friendly app names in skip reasons | UI-02, UI-06 |
+| [x] | 8.2 | B | b | Install updates from Settings and the Overview banner | DIST-04 |
+| [x] | 8.3 | B | | Row polish follow-ups: System Data gap, FDA footer, applets, admin reasons, app sort | UI-02 |

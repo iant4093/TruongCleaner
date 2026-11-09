@@ -33,8 +33,9 @@ struct DeveloperSimulatorSection: View {
             }
 
             ForEach(model.rows(DeveloperRuleIDs.simulatorFiles)) { row in
-                SmartCleanRuleRow(row: row, model: model.files, access: access)
+                SmartCleanRuleRow(row: row, model: model.files)
             }
+            SectionAccessFooter(rows: model.rows(DeveloperRuleIDs.simulatorFiles), access: access)
 
             if let command = model.command(DeveloperRuleIDs.simulatorCommand) {
                 DeveloperCommandRow(
