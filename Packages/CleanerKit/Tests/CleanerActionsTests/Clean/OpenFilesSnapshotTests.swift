@@ -28,14 +28,14 @@ struct OpenFilesSnapshotTests {
         // The folder that contains the open file counts as in use.
         #expect(await whileOpen.hasOpenFiles(under: folder) == true)
         // A name that merely starts the same is a different item.
-        #expect(await whileOpen.hasOpenFiles(under: sibling) == false)
+        #expect(reportsNotOpen(await whileOpen.hasOpenFiles(under: sibling)))
         close(descriptor)
 
         // The old snapshot keeps its answer; a new one sees the file closed.
         #expect(await whileOpen.hasOpenFiles(under: file) == true)
         let afterClose = await OpenFilesSnapshot.take(excludingPIDs: [])
-        #expect(await afterClose.hasOpenFiles(under: file) == false)
-        #expect(await afterClose.hasOpenFiles(under: folder) == false)
+        #expect(reportsNotOpen(await afterClose.hasOpenFiles(under: file)))
+        #expect(reportsNotOpen(await afterClose.hasOpenFiles(under: folder)))
     }
 
     @Test func snapshot_ignoresThisProcessByDefault() async throws {
@@ -46,7 +46,7 @@ struct OpenFilesSnapshotTests {
         defer { close(descriptor) }
 
         let snapshot = await OpenFilesSnapshot.take()
-        #expect(await snapshot.hasOpenFiles(under: file) == false)
+        #expect(reportsNotOpen(await snapshot.hasOpenFiles(under: file)))
     }
 
     @Test func snapshot_recognisesAFileHeldUnderAnotherName() async throws {
@@ -134,7 +134,7 @@ struct OpenFilesSnapshotTests {
         let file = try tree.addFile("a.bin", size: 1)
         let me = getpid()
         let snapshot = ProcessInspector.capture(excluding: [], listProcesses: { [me] })
-        #expect(await snapshot.hasOpenFiles(under: file) == false)
+        #expect(reportsNotOpen(await snapshot.hasOpenFiles(under: file)))
         let descriptor = try openReadOnly(file)
         defer { close(descriptor) }
         #expect(await ProcessInspector.capture(excluding: [], listProcesses: { [me] }).hasOpenFiles(under: file) == true)

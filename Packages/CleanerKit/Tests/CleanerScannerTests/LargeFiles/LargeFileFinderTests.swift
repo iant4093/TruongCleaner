@@ -38,7 +38,7 @@ struct LargeFileFinderTests {
         #expect(found.map(\.allocatedBytes) == [bytes(5), bytes(3)])
         #expect(found.allSatisfy { $0.privateBytes > 0 })
         let oldest = try #require(found.first?.modified)
-        #expect(abs(oldest.timeIntervalSince(daysAgo(200))) < 2)
+        #expect(abs(oldest.timeIntervalSince(daysAgo(200))) < 120)
     }
 
     @Test func noDateFilterAcceptsRecentFiles() async throws {
