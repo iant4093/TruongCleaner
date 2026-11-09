@@ -25,15 +25,42 @@ nonisolated enum ItemRowMetrics {
     static let menuWidth: CGFloat = 24
     /// Space above and below a row's content.
     static let verticalPadding: CGFloat = 3
-    /// Distance from the row's leading edge to where titles start.
-    static let titleOffset = chevronWidth + gap + checkboxWidth + gap + tileWidth + gap
-    /// Distance from the row's leading edge to the checkbox column.
-    static let checkboxOffset = chevronWidth + gap
+    /// Distance from the row's leading edge to where titles start, when all three leading columns are used.
+    static let titleOffset = titleOffset(for: .all)
+
+    /// Distance from the row's leading edge to where titles start, counting only the columns in `columns`.
+    static func titleOffset(for columns: ItemRowLeadingColumns) -> CGFloat {
+        var offset: CGFloat = 0
+        if columns.contains(.chevron) { offset += chevronWidth + gap }
+        if columns.contains(.checkbox) { offset += checkboxWidth + gap }
+        if columns.contains(.tile) { offset += tileWidth + gap }
+        return offset
+    }
     /// How far a section header's content is pushed in so that its checkbox sits over the rows' checkbox
     /// column. A grouped form indents row content more than it indents section headers.
     static let headerLeadingInset: CGFloat = 0
     /// How far a section header's content is pulled in on the right, so its total sits over the size column.
     static let headerTrailingInset: CGFloat = 0
+}
+
+/// The columns before the title that a section reserves. A column that no row in a section uses is left
+/// out, so titles start at the section's edge instead of after empty space.
+///
+/// ```swift
+/// Section { ForEach(rows) { … } }
+///     .itemRowLeadingColumns([.tile])
+/// ```
+nonisolated struct ItemRowLeadingColumns: OptionSet, Sendable {
+    let rawValue: Int
+
+    /// The disclosure chevron.
+    static let chevron = ItemRowLeadingColumns(rawValue: 1 << 0)
+    /// The checkbox.
+    static let checkbox = ItemRowLeadingColumns(rawValue: 1 << 1)
+    /// The colored icon tile.
+    static let tile = ItemRowLeadingColumns(rawValue: 1 << 2)
+    /// All three, which is the default.
+    static let all: ItemRowLeadingColumns = [.chevron, .checkbox, .tile]
 }
 
 /// Which trailing action column the rows of a page reserve. Every row on the page reserves the same width,
@@ -71,12 +98,22 @@ nonisolated enum ItemRowActionColumn: Sendable {
 extension EnvironmentValues {
     /// The action column the rows below reserve.
     @Entry var itemRowActionColumn = ItemRowActionColumn.none
+    /// The leading columns the rows below reserve. All three unless a section says otherwise.
+    @Entry var itemRowLeadingColumns = ItemRowLeadingColumns.all
 }
 
 extension View {
     /// Sets the action column that `ItemRow`, `FindingRow` and `ItemRowSectionHeader` below reserve.
     func itemRowActionColumn(_ column: ItemRowActionColumn) -> some View {
         environment(\.itemRowActionColumn, column)
+    }
+}
+
+extension View {
+    /// Sets the leading columns that `ItemRow` and `ItemRowSectionHeader` below reserve. List only the
+    /// columns that some row in the section uses.
+    func itemRowLeadingColumns(_ columns: ItemRowLeadingColumns) -> some View {
+        environment(\.itemRowLeadingColumns, columns)
     }
 }
 

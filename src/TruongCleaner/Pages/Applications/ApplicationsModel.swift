@@ -21,6 +21,24 @@ struct ApplicationRow: Identifiable {
     var bytes: Int64? { size?.allocatedBytes }
 }
 
+/// How the Applications list is ordered.
+enum ApplicationSort: String, CaseIterable, Identifiable {
+    /// A to Z.
+    case name
+    /// Biggest first. Apps that are not measured yet come last.
+    case size
+
+    var id: String { rawValue }
+
+    /// The label in the picker.
+    var title: String {
+        switch self {
+        case .name: "Name"
+        case .size: "Size"
+        }
+    }
+}
+
 /// The Applications page (`docs/UNINSTALLER.md`): the list of installed apps, the leftovers of the
 /// selected one, and the uninstall.
 ///
@@ -57,6 +75,9 @@ final class ApplicationsModel {
 
     /// The apps found, sorted by name. Includes apps that cannot be uninstalled, with their reason.
     private(set) var rows: [ApplicationRow] = []
+
+    /// How the list is ordered. Not saved: the list starts by name.
+    var sort: ApplicationSort = .name
 
     /// True while the folders are read.
     private(set) var isLoading = false
@@ -128,6 +149,26 @@ final class ApplicationsModel {
         if case .finished(let report) = cleanState { report } else { nil }
     }
 
+    /// ``rows`` in the order the user chose. Equal sizes and names fall back to the name.
+    var sortedRows: [ApplicationRow] {
+        let byName: (ApplicationRow, ApplicationRow) -> Bool = {
+            $0.facts.title.localizedStandardCompare($1.facts.title) == .orderedAscending
+        }
+        switch sort {
+        case .name:
+            return rows.sorted(by: byName)
+        case .size:
+            return rows.sorted { lhs, rhs in
+                switch (lhs.bytes, rhs.bytes) {
+                case let (left?, right?): left == right ? byName(lhs, rhs) : left > right
+                case (_?, nil): true
+                case (nil, _?): false
+                case (nil, nil): byName(lhs, rhs)
+                }
+            }
+        }
+    }
+
     /// The app that is selected, from the list or dropped on the window.
     var selectedRow: ApplicationRow? {
         guard let selectedID else { return nil }
@@ -142,6 +183,19 @@ final class ApplicationsModel {
     /// Leftovers the user left checked.
     var checkedLeftovers: [Leftover] {
         report?.leftovers.filter { checkedIDs.contains($0.id) } ?? []
+    }
+
+    /// Allocated bytes of the app bundle.
+    var appBytes: Int64 { report?.bundle.allocatedBytes ?? 0 }
+
+    /// Allocated bytes of every leftover found in the Library, checked or not.
+    var leftoverBytes: Int64 { report?.leftovers.reduce(0) { $0 + $1.finding.allocatedBytes } ?? 0 }
+
+    /// True when the app or a leftover is bigger than the size shown, because macOS did not let the
+    /// scan read all of it.
+    var totalIsAtLeast: Bool {
+        guard let report else { return false }
+        return report.bundleSizeIsAtLeast || report.leftovers.contains { $0.sizeIsAtLeast }
     }
 
     /// Allocated bytes of the app and the checked leftovers. Shown as "about".

@@ -60,6 +60,8 @@ struct SystemDataPage: View {
                         Section(section.title) {
                             ForEach(rows) { SystemDataRowView(row: $0) }
                         }
+                        // No row here has a checkbox. Only a section with a snapshot list has a chevron.
+                        .itemRowLeadingColumns(rows.contains { $0.snapshots != nil } ? [.chevron, .tile] : [.tile])
                     }
                 }
             }

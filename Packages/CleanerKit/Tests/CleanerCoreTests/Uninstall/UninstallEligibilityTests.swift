@@ -92,10 +92,80 @@ struct UninstallEligibilityTests {
         #expect(check(app) == .unreadable)
     }
 
-    @Test func rootOwnedOrNonWritableAppsNeedAnAdministrator() {
-        #expect(check(Fixtures.app(owner: 0)) == .needsAdministrator)
-        #expect(check(Fixtures.app(owner: 502)) == .needsAdministrator)
-        #expect(check(Fixtures.app(writable: false)) == .needsAdministrator)
+    @Test func rootOrAnotherUsersAppsAreRefusedAsOwnedByAnotherUser() {
+        #expect(check(Fixtures.app(owner: 0)) == .ownedByAnotherUser)
+        #expect(check(Fixtures.app(owner: 502)) == .ownedByAnotherUser)
+        #expect(check(Fixtures.app(owner: 0, writable: false)) == .ownedByAnotherUser)
+    }
+
+    @Test func anAppInAFolderTheUserCannotChangeIsRefusedWithThatReason() {
+        #expect(check(Fixtures.app(writable: false)) == .parentNotWritable)
+    }
+
+    @Test func theTwoOwnershipRefusalsSayWhy() {
+        #expect(UninstallRefusal.ownedByAnotherUser.message == "Owned by another user (installed by an installer)")
+        #expect(UninstallRefusal.parentNotWritable.message == "Can't change the Applications folder")
+    }
+
+    // MARK: Script Editor and Automator applets
+
+    private static let appletIDs = [
+        "com.apple.ScriptEditor.id.MyApplet",
+        "com.apple.Automator.Resize",
+        "COM.APPLE.SCRIPTEDITOR.ID.shout",
+    ]
+
+    @Test(arguments: appletIDs)
+    func anAdHocSignedAppletIsEligible(id: String) {
+        let applet = Fixtures.app(id, team: nil, signature: .other)
+        #expect(UninstallEligibility.isUserMadeApplet(applet))
+        #expect(check(applet) == nil)
+    }
+
+    @Test(arguments: appletIDs)
+    func aDeveloperIDSignedAppletIsEligible(id: String) {
+        #expect(check(Fixtures.app(id, team: "ABCDE12345", signature: .other)) == nil)
+    }
+
+    @Test(arguments: appletIDs)
+    func anAppleSignedAppWithAnAppletIDIsStillRefused(id: String) {
+        let app = Fixtures.app(id, signature: .apple)
+        #expect(!UninstallEligibility.isUserMadeApplet(app))
+        #expect(check(app) == .apple)
+    }
+
+    @Test(arguments: appletIDs)
+    func anAppletWithAnUnreadableSignatureIsRefused(id: String) {
+        let app = Fixtures.app(id, signature: .unknown)
+        #expect(!UninstallEligibility.isUserMadeApplet(app))
+        #expect(check(app) != nil)
+    }
+
+    @Test(arguments: [
+        "com.apple.Automator",
+        "com.apple.ScriptEditor2",
+        "com.apple.ScriptEditor.id.",
+        "com.apple.ScriptEditor.id",
+        "com.apple.Automator.",
+        "com.apple.Safari",
+        "com.apple.ScriptEditor.helper",
+        "com.apple.dt.Xcode",
+    ])
+    func onlyTheExactAppletPrefixesAreExempt(id: String) {
+        let app = Fixtures.app(id, team: nil, signature: .other)
+        #expect(!UninstallEligibility.isUserMadeApplet(app))
+        #expect(check(app) == .apple)
+    }
+
+    @Test func anAppletIsStillRefusedWhenItIsRunningOrOutsideApplications() {
+        let id = "com.apple.ScriptEditor.id.MyApplet"
+        #expect(check(Fixtures.app(id, signature: .other), running: true) == .running)
+        #expect(check(Fixtures.app(id, signature: .other, path: "/Users/test/Downloads/My.app")) == .outsideApplicationFolders)
+        #expect(check(Fixtures.app(id, signature: .other, path: "/System/Applications/My.app")) == .systemApp)
+    }
+
+    @Test func refusedAppleAppsAreLabeledMadeByApple() {
+        #expect(UninstallRefusal.apple.message == "Made by Apple")
     }
 
     @Test func unknownOwnershipRefusesTheApp() {
@@ -106,10 +176,9 @@ struct UninstallEligibilityTests {
     @Test func refusalsHaveAReasonInPlainWords() {
         let all: [UninstallRefusal] = [
             .systemApp, .apple, .signatureUnknown, .thisApp, .running, .runningUnknown, .noBundleID,
-            .outsideApplicationFolders, .needsAdministrator, .ownerUnknown, .unreadable,
+            .outsideApplicationFolders, .ownedByAnotherUser, .parentNotWritable, .ownerUnknown, .unreadable,
         ]
         for refusal in all { #expect(!refusal.message.isEmpty) }
         #expect(Set(all.map(\.message)).count == all.count)
-        #expect(UninstallRefusal.needsAdministrator.message == "Needs an administrator")
     }
 }

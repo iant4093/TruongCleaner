@@ -4,7 +4,8 @@ import Foundation
 public enum UninstallRefusal: Error, Sendable, Hashable {
     /// The app is under `/System`.
     case systemApp
-    /// Apple's own app, by bundle ID or by signature.
+    /// Apple's own app, by bundle ID or by signature. User-made Script Editor and Automator applets are
+    /// not Apple's and are not refused for this reason (see ``UninstallEligibility/isUserMadeApplet(_:)``).
     case apple
     /// The signature could not be read, so "not Apple's" cannot be shown.
     case signatureUnknown
@@ -18,8 +19,11 @@ public enum UninstallRefusal: Error, Sendable, Hashable {
     case noBundleID
     /// The app is not in `/Applications` or `~/Applications` (down to two levels).
     case outsideApplicationFolders
-    /// Another user or root owns the app, or the user cannot change its folder.
-    case needsAdministrator
+    /// Root or another user owns the app. Moving a folder to another parent needs write access to the
+    /// folder itself, so TruongCleaner cannot move it.
+    case ownedByAnotherUser
+    /// The user cannot change the folder that holds the app.
+    case parentNotWritable
     /// Who owns the app could not be read.
     case ownerUnknown
     /// The app could not be read.
@@ -29,14 +33,15 @@ public enum UninstallRefusal: Error, Sendable, Hashable {
     public var message: String {
         switch self {
         case .systemApp: "Part of macOS"
-        case .apple: "Apple app"
+        case .apple: "Made by Apple"
         case .signatureUnknown: "Could not check who made it"
         case .thisApp: "This is TruongCleaner"
         case .running: "Running. Quit it first"
         case .runningUnknown: "Could not tell if it is running"
         case .noBundleID: "Has no app ID"
         case .outsideApplicationFolders: "Not in an Applications folder"
-        case .needsAdministrator: "Needs an administrator"
+        case .ownedByAnotherUser: "Owned by another user (installed by an installer)"
+        case .parentNotWritable: "Can't change the Applications folder"
         case .ownerUnknown: "Could not check who owns it"
         case .unreadable: "Could not be read"
         }
@@ -101,7 +106,8 @@ public enum UninstallEligibility {
         if let ownURL = context.ownBundleURL, pathParts(ownURL) == parts { return .thisApp }
         if id.isEmpty { return .noBundleID }
 
-        if id.hasPrefix("com.apple.") || app.signature == .apple { return .apple }
+        if app.signature == .apple { return .apple }
+        if id.hasPrefix("com.apple."), !isUserMadeApplet(app) { return .apple }
         if app.signature == .unknown { return .signatureUnknown }
         if !isInsideApplicationFolders(parts, context: context) { return .outsideApplicationFolders }
 
@@ -112,8 +118,25 @@ public enum UninstallEligibility {
         }
 
         guard let owner = app.ownerUID, let writable = app.parentIsWritable else { return .ownerUnknown }
-        if owner != context.currentUserID || !writable { return .needsAdministrator }
+        if owner != context.currentUserID { return .ownedByAnotherUser }
+        if !writable { return .parentNotWritable }
         return nil
+    }
+
+    /// Bundle ID prefixes that Script Editor and Automator give to the applets users save. Each ends in a
+    /// dot, so Apple's own `com.apple.Automator` and `com.apple.ScriptEditor2` do not match.
+    static let appletIDPrefixes = ["com.apple.scripteditor.id.", "com.apple.automator."]
+
+    /// Whether `app` is an applet that a user made with Script Editor or Automator: its bundle ID starts
+    /// with one of those prefixes followed by a name, and the signature is not Apple's (ad-hoc, Developer ID,
+    /// or none). An applet is the user's own file, so it may be uninstalled. An unreadable signature is not
+    /// enough: the check is then false, and the app stays refused.
+    ///
+    /// Leftovers of such an applet are matched by exact bundle ID evidence only (`LeftoverMatcher`).
+    public static func isUserMadeApplet(_ app: AppFacts) -> Bool {
+        guard app.signature == .other, let raw = app.bundleID else { return false }
+        let id = BundleIDText.fold(raw)
+        return appletIDPrefixes.contains { id.hasPrefix($0) && id.count > $0.count }
     }
 
     /// The path as components, or nil when it is not an absolute path without `.`/`..`.

@@ -105,7 +105,8 @@ struct DeveloperPage: View {
                 DeveloperCommandRow(command: command, model: model, pending: $pending)
             }
             if let row = model.rows([DeveloperRuleIDs.dockerInfo]).first {
-                SmartCleanRuleRow(row: row, model: model.files, access: app.access)
+                SmartCleanRuleRow(row: row, model: model.files)
+                SectionAccessFooter(rows: [row], access: app.access)
             } else {
                 Text(dockerImageNote)
                     .foregroundStyle(.secondary)
@@ -189,8 +190,9 @@ struct DeveloperFileSection: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(rows) { row in
-                SmartCleanRuleRow(row: row, model: model.files, access: access)
+                SmartCleanRuleRow(row: row, model: model.files)
             }
+            SectionAccessFooter(rows: rows, access: access)
             ForEach(commandIDs.compactMap(model.command)) { command in
                 DeveloperCommandRow(command: command, model: model, pending: $pending)
             }

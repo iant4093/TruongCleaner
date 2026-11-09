@@ -39,6 +39,7 @@ struct ApplicationsPage: View {
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            sortBar
             list
         }
         .searchable(text: $searchText, prompt: "Search Applications")
@@ -75,6 +76,22 @@ struct ApplicationsPage: View {
 
     // MARK: List
 
+    private var sortBar: some View {
+        HStack {
+            Spacer()
+            Picker("Sort by", selection: $model.sort) {
+                ForEach(ApplicationSort.allCases) { sort in
+                    Text(sort.title).tag(sort)
+                }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            .accessibilityHint("Orders the list of apps")
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 4)
+    }
+
     private var list: some View {
         List(selection: selection) {
             ForEach(filteredRows) { row in
@@ -101,8 +118,9 @@ struct ApplicationsPage: View {
     }
 
     private var filteredRows: [ApplicationRow] {
-        guard !searchText.isEmpty else { return model.rows }
-        return model.rows.filter {
+        let rows = model.sortedRows
+        guard !searchText.isEmpty else { return rows }
+        return rows.filter {
             $0.facts.title.localizedCaseInsensitiveContains(searchText)
                 || ($0.facts.bundleID?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
