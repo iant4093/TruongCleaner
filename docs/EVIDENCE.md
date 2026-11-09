@@ -313,3 +313,28 @@ fails on this Mac because `~/Library/Caches` alone is 1.01 M files (`user.caches
 "first results < 1 s, full list < 8 s on a 1 M-file cache folder". Merged main:
 lint 0 violations in 149 files, deletion-site PASS, package tests PASS, Release
 build 4.2 MB.
+
+### Ian's hand checks and Wave 8 review (2026-11-09)
+
+Hand checks passed (Ian). History file after his test: 2 cleans, 1,051 items moved
+and later freed, 200 deleted permanently (Empty Trash), 101 skipped with reasons
+(58 open files, 38 Xcode open, others owner open), **0 failed**; 4 owner commands
+(2 simulator deletes, `brew cleanup`, exit 0). No error-level logs.
+
+- 8.1 shared `ItemRow` (fixed columns; chevron and checkbox on the title line;
+  one-button-plus-menu actions; app names instead of bundle IDs in skip reasons).
+  Gap: grouped `Form` on macOS 27 ignores separator insets.
+- 8.2 in-app update install: download from the release, SHA-256 check, strict
+  signature check, rename-swap with rollback, relaunch, old bundle to Trash on next
+  launch. GitHub now redirects assets to `release-assets.githubusercontent.com`
+  (allowed for redirects only). `tech.md` and `safety.md` (16a) updated.
+- 6.2 Applications page and uninstaller per `docs/UNINSTALLER.md`; every §5
+  incident has a test; 13 end-to-end uninstall tests through the real gate.
+- Merged main: lint 0 violations in 178 files, deletion-site check PASS, package
+  tests PASS, Debug + Release build (Release 4.7 MB).
+- Orchestrator screenshot review → brief 8.3: System Data rows reserve unused
+  chevron/checkbox columns; Smart Clean FDA footer cramped; Script Editor applet
+  (`com.apple.ScriptEditor.id.AutoKey`, ad-hoc) shown as "Apple app". Apps
+  showing "Needs an administrator" in the agent's screenshot are user-owned; the
+  agent sandbox makes `/Applications` look unwritable, so Ian should confirm on
+  his own launch.
