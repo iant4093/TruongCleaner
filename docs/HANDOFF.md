@@ -1,56 +1,49 @@
 # Handoff
 
-Last updated: 2026-11-06 evening, during Ian's away session.
+Last updated: 2026-11-09, after Wave 8.
 
 ## State
 
-The app works end to end in Debug and Release builds. Merged and reviewed:
+Every v1.0 feature is built, reviewed and released from `main`:
+Overview, Smart Clean, System Data, Developer, Large & Old Files, Space Lens,
+Applications (uninstaller, `docs/UNINSTALLER.md`), Trash, History, Settings
+(exclusions, rules, delete mode, permissions, **in-app update install**),
+onboarding, icon, README screenshots. Ian's first hand checks passed
+(`docs/EVIDENCE.md`, "Ian's hand checks").
 
-| Wave | Done |
-|---|---|
-| 0 Spikes | S1 walker benchmark, S2 FDA probe app, S3 Trash API, S4 volume numbers, S5 UI prototype, S8 dispatch/hooks |
-| 1 Foundation | Xcode project, CleanerKit package, scripts, CI/CD, MIT license; releases publish from `main` |
-| 2 Scanner + Overview | `BulkWalker` (getattrlistbulk), volume/snapshot/simulator probes, PathPolicy + Matcher, ScanEngine (overlaps, pruning), Overview page |
-| 3 Clean engine | SafetyGate (17 checks, each test-proven), liveness providers (reworked in 2.6b), executors, history, put back, Free Space Now, Smart Clean page, Trash and History pages, catalog part 1 |
-| 4 System Data + Developer | Catalog part 2 (all of RULE_CATALOG §4), owner-command runner, System Data page, Developer page |
-| 5 Pages | Large & Old Files, Space Lens, Settings (exclusions, rules, delete mode, permissions), FDA probe, update checker |
-| 7 Polish (partial) | Onboarding, Overview recommendations, accessibility pass |
+## How changes reach `main`
 
-Also done: 7.3 (app icon, README screenshots), 4.5b (owner-command history),
-4.6 (home-folder categories in Overview and System Data), Release stripping
-(app 4.1 MB). Open: 2.6 perf numbers, Wave 6 uninstaller (after 1.0), hand
-checks below. See `.kiro/specs/truongcleaner/tasks.md`.
+The host policy blocks `git push` to `main` from this session. Flow:
 
-## How changes reach `main` now
-
-The host policy blocks `git push` to `main` from this session (it was allowed
-earlier). Flow: commit on local `main`, `git branch -f integration main`,
-`git push -v origin refs/heads/integration:refs/heads/integration` (as its own
-command; it sometimes reports "Everything up-to-date" without updating the remote,
-so check `git ls-remote origin refs/heads/integration` and repeat once), wait ~20 s,
-open a PR to `main`, merge it with `gh pr merge <n> --merge` once CI is green, then
-`git merge origin/main`.
+1. Commit on local `main`; `git branch -f integration main`.
+2. `git push -v origin refs/heads/integration:refs/heads/integration` as its own
+   command. It sometimes reports "Everything up-to-date" without updating the
+   remote: confirm with `gh api repos/iant4093/TruongCleaner/branches/integration --jq .commit.sha`
+   and repeat.
+3. Open a PR to `main` (wait ~20 s after the push), check CI with
+   `gh api "repos/iant4093/TruongCleaner/actions/runs?head_sha=<sha>"`, merge with
+   `gh pr merge <n> --merge`, then `git merge origin/main`.
 
 ## Waiting on Ian (hand checks ✋)
 
-1. **S7 install:** run `curl -fsSL https://github.com/iant4093/TruongCleaner/releases/latest/download/install.sh | sh` and confirm the app opens with no Gatekeeper prompt. Also try the DMG once.
-2. **S2 Full Disk Access:** open the app, Settings > Permissions > Open Privacy Settings. Does the link land on Full Disk Access? Grant it and check that "Needs Full Disk Access" rows disappear after rescanning.
-3. **S4 / Overview:** compare the Overview and System Data numbers with System Settings > General > Storage. Does macOS 27 count purgeable space inside System Data?
-4. **S5 look:** does the window look like System Settings (tile size, rows, glass toolbar, clean bar)? Try both ends of the Liquid Glass slider.
-5. **First real clean (3.8):** run Smart Clean, review, clean a few Safe items you choose, then put one back from History, then Free Space Now.
+1. **Update from Settings:** after the next release, open Settings > General and
+   press Install Update. The app should relaunch on the new build. macOS may ask
+   for Full Disk Access again.
+2. **Applications:** pick an app you no longer need, check the leftovers list,
+   uninstall it, then Put Back from History to confirm undo works. Tell me if user-installed
+   apps show "Can't change the Applications folder" on your launch (the agent's
+   sandboxed launch showed it; a normal launch should not).
+3. **Look:** Smart Clean, Developer and System Data rows after the 8.1/8.3 polish.
 
 ## Known gaps (accepted for now)
 
-- Project build folders: "skip if git-tracked" is approximated (artifacts containing `.git` are skipped).
-- Mail downloads: no "unedited since saved" check (age guard only).
-- macOS installers: no signature check (age guard only).
-- `trash.volumes` is inert (no per-user root segment in the model).
-- Gradle and npm owners are approximate process names.
-- Liveness: descriptors that return `EPERM` (other system agents) cannot be inspected by any user process.
+- Smart Clean takes ~6.5–8 s on a 1 M-file `~/Library/Caches` (budget 5 s); results stream per section.
+- Grouped `Form` on macOS 27 draws row dividers from the row edge, not the title.
+- Project build folders: "skip if git-tracked" approximated; Mail downloads: no unedited check; macOS installers: no signature check; `trash.volumes` inert.
+- Ad-hoc signing: Full Disk Access may need re-granting after each update.
 
 ## Resume checklist
 
-1. Read `AGENTS.md`, this file, and `tasks.md`.
+1. Read `AGENTS.md`, this file, `tasks.md`.
 2. `git log --oneline | head`, `git status`, `git worktree list`.
-3. Check `build/dispatch/*.done` and logs for builders that finished.
-4. Continue from the first unchecked task.
+3. Check `build/dispatch/*.done` for finished builders.

@@ -75,6 +75,7 @@ Release build on macOS 27, 1100 × 720 window, Light appearance.
 - System Data: each contributor with its size, what it is, and the sanctioned way to reduce it, including commands you can copy for the parts that need an administrator
 - Space Lens: a sunburst of any folder, with drill-down and Quick Look
 - Large & Old Files: big files you have not changed in a while, in folders you choose
+- Applications: uninstall an app together with the files it left in your Library, matched only by the app's ID, never by a guess
 
 **Clean safely**
 
@@ -87,7 +88,7 @@ Release build on macOS 27, 1100 × 720 window, Light appearance.
 **Native and light**
 
 - SwiftUI with the System Settings look and Liquid Glass controls
-- No third-party code, no telemetry; one optional daily check for a newer build
+- No third-party code, no telemetry; one optional daily check for a newer build, and updates install from Settings with a checksum and signature check
 - A full scan of `~/Library` (1.5 million files) takes about 7 seconds with about 12 MB of memory on an Apple silicon Mac (`docs/EVIDENCE.md`, S1)
 
 ## Install
