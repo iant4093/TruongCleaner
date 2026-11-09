@@ -82,7 +82,7 @@ struct ReadOnlyCommandTests {
         let result = await ReadOnlyCommand.execute("/bin/sleep", ["5"], timeout: .milliseconds(200))
         #expect(result.timedOut)
         #expect(!result.succeeded)
-        #expect(result.duration < .seconds(3))
+        #expect(result.duration < timingBudget(.seconds(3)))
         #expect(result.launchError == nil)
     }
 
