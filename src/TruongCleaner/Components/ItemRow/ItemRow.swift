@@ -8,7 +8,7 @@ import SwiftUI
 /// ```
 ///
 /// Every column has a fixed width (`ItemRowMetrics`), so titles start at one x and sizes end at one x in
-/// every row, whether or not a row has a chevron, checkbox, tile, badge or action. Chevron, checkbox, tile,
+/// every row of a section, whether or not a row has a chevron, checkbox, tile, badge or action. Chevron, checkbox, tile,
 /// badge, size and action are centered on the title line, not on the whole row.
 ///
 /// Build a row with the initializer, then add the optional parts with the modifiers:
@@ -18,11 +18,13 @@ import SwiftUI
 ///     .selection($isOn)                      // a checkbox
 ///     .badge(.review)                        // a capsule left of the size
 ///     .actions([ItemRowAction(title: "Open Settings") { … }])
-///     .footer { NeedsAccessRow(kind: .fullDiskAccess) }   // under the explanation, in the title column
+///     .footer { Text("Moved on the next restart") }       // under the explanation, in the title column
 ///     .disclosure { FindingRow(finding: f) }              // the chevron and what it opens
 /// ```
 ///
-/// Set `.itemRowActionColumn(_:)` on the form so that every row reserves the same action width.
+/// Set `.itemRowActionColumn(_:)` on the form so that every row reserves the same action width. A section
+/// whose rows have no chevron, checkbox or tile sets `.itemRowLeadingColumns(_:)` so that those columns are
+/// not reserved there.
 struct ItemRow: View {
     var icon: ItemRowIcon?
     var title: String
@@ -41,6 +43,7 @@ struct ItemRow: View {
     @State private var isExpanded = false
     @State private var showsInfo = false
     @SwiftUI.Environment(\.itemRowActionColumn) private var column
+    @SwiftUI.Environment(\.itemRowLeadingColumns) private var leading
 
     /// Creates a row.
     /// - Parameters:
@@ -105,12 +108,13 @@ struct ItemRow: View {
     // MARK: Body
 
     var body: some View {
-        rowContent
+        let titleOffset = ItemRowMetrics.titleOffset(for: leading)
+        return rowContent
             .padding(.vertical, ItemRowMetrics.verticalPadding)
             .accessibilityElement(children: .contain)
             // System Settings draws its dividers from the title, not from the row's edge.
             // Lists honor this; a grouped Form on macOS draws its dividers from the row edge regardless.
-            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + ItemRowMetrics.titleOffset }
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + titleOffset }
     }
 
     @ViewBuilder
@@ -121,12 +125,14 @@ struct ItemRow: View {
             } label: {
                 line
             }
-            .disclosureGroupStyle(ItemRowDisclosureStyle())
+            .disclosureGroupStyle(ItemRowDisclosureStyle(columns: leading))
         } else {
             HStack(alignment: .titleCenter, spacing: ItemRowMetrics.gap) {
                 // Reserved so the titles of rows without a chevron line up with the others.
-                Color.clear.frame(width: ItemRowMetrics.chevronWidth, height: 1)
-                    .accessibilityHidden(true)
+                if leading.contains(.chevron) {
+                    Color.clear.frame(width: ItemRowMetrics.chevronWidth, height: 1)
+                        .accessibilityHidden(true)
+                }
                 line
             }
         }
@@ -158,7 +164,7 @@ struct ItemRow: View {
                 .frame(width: ItemRowMetrics.checkboxWidth)
                 .accessibilityLabel(selectionLabel)
                 .accessibilityHint(explain ?? "")
-        } else {
+        } else if leading.contains(.checkbox) {
             Color.clear.frame(width: ItemRowMetrics.checkboxWidth, height: 1)
                 .accessibilityHidden(true)
         }
@@ -173,7 +179,7 @@ struct ItemRow: View {
     private var tile: some View {
         if let icon {
             IconTile(symbol: icon.symbol, color: icon.color)
-        } else {
+        } else if leading.contains(.tile) {
             Color.clear.frame(width: ItemRowMetrics.tileWidth, height: 1)
                 .accessibilityHidden(true)
         }

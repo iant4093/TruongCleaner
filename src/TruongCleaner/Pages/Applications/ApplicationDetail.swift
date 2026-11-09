@@ -53,14 +53,17 @@ struct ApplicationDetail: View {
 
     private static func explanation(for refusal: UninstallRefusal) -> String {
         switch refusal {
-        case .systemApp, .apple: "Apple’s apps are part of macOS. TruongCleaner does not remove them."
+        case .systemApp, .apple: "Apple made this app and it is part of macOS. TruongCleaner does not remove it."
         case .signatureUnknown: "TruongCleaner could not read who signed this app, so it keeps it."
         case .thisApp: "TruongCleaner cannot remove itself. Drag it to the Trash in Finder."
         case .running: "Quit the app, then choose it again."
         case .runningUnknown: "TruongCleaner could not tell if this app is running, so it keeps it."
         case .noBundleID: "The app has no identifier, so there is nothing safe to match its files with."
         case .outsideApplicationFolders: "Only apps in /Applications or ~/Applications can be removed here."
-        case .needsAdministrator: "An administrator owns this app. Remove it in Finder, which asks for a password."
+        case .ownedByAnotherUser:
+            "Another user owns this app, usually because an installer put it there. TruongCleaner cannot move it. Remove it in Finder, which asks for a password."
+        case .parentNotWritable:
+            "You cannot change the folder that holds this app, so TruongCleaner cannot move it. Remove it in Finder, which asks for a password."
         case .ownerUnknown: "TruongCleaner could not check who owns this app, so it keeps it."
         case .unreadable: "The app could not be read."
         }
@@ -70,7 +73,7 @@ struct ApplicationDetail: View {
 
     private func readyForm(_ report: UninstallReport) -> some View {
         Form {
-            Section { header(report.app, total: model.selectedBytes) }
+            Section { header(report.app, total: model.selectedBytes, breakdown: breakdown(report)) }
 
             Section("Application") {
                 bundleRow(report)
@@ -113,6 +116,7 @@ struct ApplicationDetail: View {
                         kind: unreadable.needsAccess
                             ? (app.access == .granted ? .refusedByMacOS : .fullDiskAccess) : .refusedByMacOS,
                         openPrivacySettings: SmartCleanActions.openPrivacySettings)
+                        .itemRowLeadingColumns([])
                 } header: {
                     Text(unreadable.place.title)
                 }
@@ -150,13 +154,32 @@ struct ApplicationDetail: View {
         }
     }
 
-    private func header(_ facts: AppFacts, total: Int64?) -> some View {
+    /// What the app and its leftovers take together, before anything is moved.
+    private struct Breakdown {
+        let app: Int64
+        let leftovers: Int64
+        let leftoverCount: Int
+        let isAtLeast: Bool
+
+        var total: Int64 { app + leftovers }
+    }
+
+    private func breakdown(_ report: UninstallReport) -> Breakdown {
+        Breakdown(
+            app: model.appBytes, leftovers: model.leftoverBytes, leftoverCount: report.leftovers.count,
+            isAtLeast: model.totalIsAtLeast)
+    }
+
+    private func header(_ facts: AppFacts, total: Int64?, breakdown: Breakdown? = nil) -> some View {
         HStack(spacing: 12) {
             FileIcon(url: facts.url, size: 48)
             VStack(alignment: .leading, spacing: 2) {
                 Text(facts.title).font(.title3.bold())
                 if let version = facts.version {
                     Text("Version \(version)").foregroundStyle(.secondary)
+                }
+                if let breakdown {
+                    breakdownLine(breakdown)
                 }
                 if let total {
                     HStack(spacing: 4) {
@@ -171,6 +194,17 @@ struct ApplicationDetail: View {
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func breakdownLine(_ breakdown: Breakdown) -> some View {
+        let prefix = breakdown.isAtLeast ? "At least " : ""
+        let files = breakdown.leftoverCount == 0 ? "no related files" : "\(ByteFormatter.string(breakdown.leftovers)) in related files"
+        return Text("\(prefix)\(ByteFormatter.string(breakdown.total)) in all: app \(ByteFormatter.string(breakdown.app)), \(files)")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel(
+                "\(prefix)\(SizeText.spoken(breakdown.total)) in all. App \(SizeText.spoken(breakdown.app)), related files \(SizeText.spoken(breakdown.leftovers))")
     }
 
     private func bundleRow(_ report: UninstallReport) -> some View {

@@ -162,8 +162,9 @@ struct SmartCleanPage: View {
         ForEach(model.sections) { section in
             Section {
                 ForEach(section.rows) { row in
-                    SmartCleanRuleRow(row: row, model: model, access: app.access)
+                    SmartCleanRuleRow(row: row, model: model)
                 }
+                SectionAccessFooter(rows: section.rows, access: app.access)
             } header: {
                 sectionHeader(section)
             }
@@ -243,7 +244,6 @@ struct SmartCleanPage: View {
 struct SmartCleanRuleRow: View {
     let row: SmartCleanRow
     let model: SmartCleanModel
-    let access: AccessState
 
     var body: some View {
         ruleRow
@@ -276,11 +276,6 @@ struct SmartCleanRuleRow: View {
                 }
             }
         }
-        if row.needsAccess {
-            item = item.footer {
-                NeedsAccessRow(kind: accessKind, openPrivacySettings: SmartCleanActions.openPrivacySettings)
-            }
-        }
         return item
     }
 
@@ -290,11 +285,6 @@ struct SmartCleanRuleRow: View {
         case .info: .info
         case .safe: row.needsAccess ? .needsAccess : nil
         }
-    }
-
-    private var accessKind: NeedsAccessRow.Kind {
-        if row.rule.access == .root { return .administratorOnly }
-        return access == .granted ? .refusedByMacOS : .fullDiskAccess
     }
 }
 

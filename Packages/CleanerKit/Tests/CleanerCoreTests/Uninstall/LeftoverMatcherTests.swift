@@ -148,6 +148,52 @@ struct LeftoverMatcherTests {
         #expect(Fixtures.names(matches) == ["a.plist"])
     }
 
+    // MARK: Script Editor and Automator applets
+
+    private static let appletID = "com.apple.ScriptEditor.id.MyApplet"
+
+    private static func applet(team: String? = nil) -> AppFacts {
+        Fixtures.app(
+            appletID, name: "My Applet", executable: "applet", team: team, signature: .other,
+            path: "/Applications/My Applet.app")
+    }
+
+    @Test func anAppletIsMatchedByItsExactBundleIDAndByIDPlusDot() {
+        let matches = Fixtures.match(
+            Self.applet(),
+            [
+                Fixtures.user(.caches): [Self.entry(Self.appletID), Self.entry("com.apple.ScriptEditor.id.Other")],
+                Fixtures.user(.preferences): [
+                    Self.entry(Self.appletID + ".plist", directory: false),
+                    Self.entry(Self.appletID + "2.plist", directory: false),
+                    Self.entry("com.apple.ScriptEditor.id.plist", directory: false),
+                    Self.entry("com.apple.ScriptEditor2.plist", directory: false),
+                ],
+            ])
+        #expect(Fixtures.names(matches) == [Self.appletID, Self.appletID + ".plist"])
+        #expect(matches.candidates.allSatisfy { $0.tier == .safe })
+    }
+
+    @Test func anAppletIsNeverMatchedByNameOrByTeamOrByGroupContainer() {
+        let matches = Fixtures.match(
+            Self.applet(team: "ABCDE12345"),
+            [
+                Fixtures.user(.applicationSupport): [Self.entry("My Applet"), Self.entry("applet")],
+                Fixtures.user(.groupContainers): [
+                    Self.entry("ABCDE12345.com.example"), Self.entry("group." + Self.appletID),
+                ],
+            ])
+        #expect(matches.candidates.isEmpty)
+    }
+
+    @Test func anAppleSignedAppWithAnAppletIDStillGetsNameMatchesOnlyAsBefore() {
+        // Not an applet, so it takes the normal path. (It is refused earlier by the eligibility check.)
+        let app = Fixtures.app(Self.appletID, name: "My Applet", signature: .apple, path: "/Applications/My Applet.app")
+        #expect(!UninstallEligibility.isUserMadeApplet(app))
+        let matches = Fixtures.match(app, [Fixtures.user(.applicationSupport): [Self.entry("My Applet")]])
+        #expect(Fixtures.names(matches) == ["My Applet"])
+    }
+
     @Test func nameEqualToTheAppNameIsReviewAndNotSelected() {
         let app = Fixtures.app(name: "Foo Pro", displayName: "Foo Professional", executable: "foopro")
         let matches = Fixtures.match(

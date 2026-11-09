@@ -234,6 +234,9 @@ struct ItemRowChevron: View {
 /// Lays an expandable row out so the chevron has its own column, centered on the title line, and the
 /// expanded content starts under the titles.
 struct ItemRowDisclosureStyle: DisclosureGroupStyle {
+    /// The leading columns of the section. The chevron column is always counted, because this style draws it.
+    var columns = ItemRowLeadingColumns.all
+
     func makeBody(configuration: Configuration) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .titleCenter, spacing: ItemRowMetrics.gap) {
@@ -242,7 +245,7 @@ struct ItemRowDisclosureStyle: DisclosureGroupStyle {
             }
             if configuration.isExpanded {
                 configuration.content
-                    .padding(.leading, ItemRowMetrics.titleOffset)
+                    .padding(.leading, ItemRowMetrics.titleOffset(for: columns.union(.chevron)))
             }
         }
     }
@@ -257,17 +260,20 @@ struct ItemRowSectionHeader: View {
     /// Total bytes of the section.
     var bytes: Int64?
     @SwiftUI.Environment(\.itemRowActionColumn) private var column
+    @SwiftUI.Environment(\.itemRowLeadingColumns) private var leading
 
     var body: some View {
         HStack(spacing: ItemRowMetrics.gap) {
-            Color.clear.frame(width: ItemRowMetrics.chevronWidth, height: 1)
+            if leading.contains(.chevron) {
+                Color.clear.frame(width: ItemRowMetrics.chevronWidth, height: 1)
+            }
             if let selection {
                 Toggle(isOn: selection) { EmptyView() }
                     .labelsHidden()
                     .toggleStyle(.checkbox)
                     .frame(width: ItemRowMetrics.checkboxWidth)
                     .accessibilityLabel("Select all in \(title)")
-            } else {
+            } else if leading.contains(.checkbox) {
                 Color.clear.frame(width: ItemRowMetrics.checkboxWidth, height: 1)
             }
             Text(title)

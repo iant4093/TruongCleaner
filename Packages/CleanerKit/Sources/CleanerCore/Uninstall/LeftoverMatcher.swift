@@ -94,6 +94,10 @@ public enum LeftoverMatcher {
         let names: [(folded: String, shown: String)]
         let team: String?
         let otherIDs: [String]
+        /// True for an applet that a user made with Script Editor or Automator. Its bundle ID is the only
+        /// evidence: no name matches, no team ID, no group containers. Apple's own `com.apple.` apps are
+        /// never uninstalled, and an applet shares its ID prefix with them.
+        let exactIDOnly: Bool
 
         init(app: AppFacts, id: String, rawID: String, others: [AppFacts]) {
             self.app = app
@@ -109,6 +113,7 @@ public enum LeftoverMatcher {
                 }
                 return (folded, shown)
             }
+            self.exactIDOnly = UninstallEligibility.isUserMadeApplet(app)
             self.team = app.teamID.flatMap { $0.isEmpty ? nil : BundleIDText.fold($0) }
             self.otherIDs = others.compactMap { $0.bundleID }.map(BundleIDText.fold).filter { !$0.isEmpty }
         }
@@ -137,6 +142,7 @@ public enum LeftoverMatcher {
                     return make(entry, place, .safe, .containerMetadata(rawID), identifier: folded)
                 }
             }
+            if exactIDOnly { return nil }
             if place.folder == .groupContainers, let group = groupCandidate(entry, place, name, inventoryComplete) {
                 return group
             }
