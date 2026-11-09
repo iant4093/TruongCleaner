@@ -113,26 +113,12 @@ private struct DetailView: View {
             LargeFilesPage(model: model.largeFiles)
         case .spaceLens:
             SpaceLensPage(model: model.spaceLens)
+        case .applications:
+            ApplicationsPage(model: model.applications)
         case .trash:
             TrashPage(model: model.trash)
         case .history:
             HistoryPage(model: model.cleanHistory)
-        default:
-            placeholder
-        }
-    }
-
-    private var placeholder: some View {
-        VStack(spacing: 0) {
-            PageHeader(symbol: page.symbol, color: page.color, title: page.title, subtitle: page.subtitle)
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-            ContentUnavailableView(
-                page.title,
-                systemImage: page.symbol,
-                description: Text("This page is built in Wave \(page.builtInWave).")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

@@ -413,5 +413,10 @@ struct CatalogPart2Tests {
             id: "installers.other", category: .installers, tier: .review, roots: [],
             match: .glob("*.app"), access: .user, action: .trash, title: "x", explain: "x")
         #expect(!imposter.allowsWholeBundle)
+        // The uninstaller's synthetic rule is the one other ID that has it. It is not in the catalog.
+        let uninstall = Rule(
+            id: Rule.uninstallRuleID, category: .apps, tier: .review, roots: [],
+            match: .children, access: .user, action: .trash, title: "x", explain: "x")
+        #expect(uninstall.allowsWholeBundle)
     }
 }

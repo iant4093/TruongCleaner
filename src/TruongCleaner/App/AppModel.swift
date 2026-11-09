@@ -25,6 +25,8 @@ final class AppModel {
     let smartClean: SmartCleanModel
     /// Data for the Developer page.
     let developer: DeveloperModel
+    /// Data for the Applications page.
+    let applications: ApplicationsModel
 
     /// Data for the Trash page.
     let trash: TrashModel
@@ -60,6 +62,7 @@ final class AppModel {
         self.services = services
         self.smartClean = SmartCleanModel(settings: settings, services: services)
         self.developer = DeveloperModel(settings: settings, services: services)
+        self.applications = ApplicationsModel(settings: settings, services: services)
         self.trash = TrashModel(services: services, settings: settings)
         self.cleanHistory = HistoryModel(services: services)
     }
@@ -121,6 +124,14 @@ final class AppModel {
                         model.scan()
                     }
                 }
+            )
+        case .applications:
+            let model = applications
+            // ⌘R reads the application folders again; while that runs the button stops it.
+            return ToolbarScan(
+                isRunning: model.isLoading || model.isMeasuring,
+                isEnabled: !model.isCleaning,
+                perform: { model.isLoading || model.isMeasuring ? model.stopLoading() : model.reload() }
             )
         default:
             return nil
