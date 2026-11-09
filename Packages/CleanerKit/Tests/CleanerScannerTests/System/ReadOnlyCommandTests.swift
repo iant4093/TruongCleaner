@@ -1,3 +1,4 @@
+import CleanerTestSupport
 import Foundation
 import Testing
 @testable import CleanerScanner
