@@ -212,7 +212,7 @@ struct OwnerCommandRunnerTests {
         #expect(result.skipped == nil)
         #expect(result.exitCode == nil)
         #expect(!result.succeeded)
-        #expect(result.duration < .seconds(4))
+        #expect(result.duration < timingBudget(.seconds(4)))
         #expect(tool.records().count == 1)
     }
 
