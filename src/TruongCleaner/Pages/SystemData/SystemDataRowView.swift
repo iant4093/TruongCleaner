@@ -13,7 +13,9 @@ extension SystemDataValue {
     }
 }
 
-/// One contributor in the System Data list: tile, name, what it is, size, tier and one action.
+/// One contributor in the System Data list, as an `ItemRow`: tile, name, what it is, an Info or Needs access
+/// badge, size, and one action. A row with a second action (Open Settings and Copy Command) puts it in the
+/// ellipsis menu.
 struct SystemDataRowView: View {
     let row: SystemDataRow
 
@@ -21,109 +23,81 @@ struct SystemDataRowView: View {
     @State private var showsDetails = false
 
     var body: some View {
+        itemRow
+    }
+
+    private var itemRow: ItemRow {
+        var item = ItemRow(
+            icon: ItemRowIcon(symbol: row.symbol, color: row.color),
+            title: row.title,
+            explain: row.explain,
+            note: row.note,
+            size: size
+        )
+        .badge(row.value == .needsAccess ? .needsAccess : .info)
+        .trailing {
+            actions
+        }
         if let snapshots = row.snapshots {
-            DisclosureGroup {
+            item = item.disclosure {
                 ForEach(snapshots, id: \.name) { snapshot in
                     Text(snapshot.date?.formatted(date: .abbreviated, time: .shortened) ?? snapshot.name)
                         .foregroundStyle(.secondary)
-                }
-            } label: {
-                content
-            }
-        } else {
-            content
-        }
-    }
-
-    private var content: some View {
-        HStack(alignment: .top, spacing: 12) {
-            IconTile(symbol: row.symbol, color: row.color)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
-                Text(row.explain)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let note = row.note {
-                    Text(note)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .trailing, spacing: 4) {
-                valueText
-                tierLabel
-            }
-            actions
         }
+        return item
     }
 
-    @ViewBuilder
-    private var valueText: some View {
+    private var size: ItemRowSize {
         switch row.value {
-        case .needsAccess:
-            Label(row.value.display, systemImage: "lock.fill")
-                .labelStyle(.titleAndIcon)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.trailing)
-                .accessibilityLabel(row.value.spoken)
-        case .size, .atLeast:
-            Text(row.value.display)
-                .monospacedDigit()
-                .multilineTextAlignment(.trailing)
-                .accessibilityLabel(row.value.spoken)
-        case .text, .unknown, .macOSOnly:
-            Text(row.value.display)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.trailing)
+        case .size(let bytes): .bytes(bytes)
+        case .atLeast(let bytes): .atLeast(bytes)
+        case .text(let text): .text(text)
+        case .macOSOnly: .text("macOS only")
+        case .unknown, .needsAccess: .unknown
         }
     }
 
-    /// Every row on this page is Info: it is shown, never removed by this app.
-    private var tierLabel: some View {
-        Text("Info")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(.quaternary, in: Capsule())
-            .accessibilityLabel("Information only. TruongCleaner does not remove this.")
+    /// Open Settings, Copy Command, or Learn More. Rows with a settings pane and a command show the pane as
+    /// the button and the command in the menu.
+    private var actions: some View {
+        ItemRowActions(actions: actionList)
+            .popover(isPresented: $showsCommand, arrowEdge: .leading) {
+                CommandPopover(command: row.command ?? "")
+            }
+            .popover(isPresented: $showsDetails, arrowEdge: .leading) {
+                Text(row.explain + "\n\nTruongCleaner shows this number only. It cannot remove it.")
+                    .font(.callout)
+                    .frame(width: 280, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(14)
+            }
     }
 
-    /// Open Settings, Copy Command, or Learn More. Rows with a settings pane and a command show both.
-    private var actions: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            if let url = row.settingsURL {
-                Button("Open Settings") { SystemDataActions.open(url) }
-                    .accessibilityLabel("Open Settings for \(row.title)")
-            }
-            if let command = row.command {
-                Button("Copy Command") {
+    private var actionList: [ItemRowAction] {
+        var list: [ItemRowAction] = []
+        if let url = row.settingsURL {
+            list.append(
+                ItemRowAction(title: "Open Settings", accessibilityLabel: "Open Settings for \(row.title)") {
+                    SystemDataActions.open(url)
+                })
+        }
+        if let command = row.command {
+            list.append(
+                ItemRowAction(title: "Copy Command", accessibilityLabel: "Copy Command for \(row.title)") {
                     SystemDataActions.copy(command)
                     showsCommand = true
-                }
-                .accessibilityLabel("Copy Command for \(row.title)")
-                .popover(isPresented: $showsCommand, arrowEdge: .leading) {
-                    CommandPopover(command: command)
-                }
-            }
-            if row.settingsURL == nil, row.command == nil {
-                Button("Learn More") { showsDetails = true }
-                    .accessibilityLabel("Learn more about \(row.title)")
-                    .popover(isPresented: $showsDetails, arrowEdge: .leading) {
-                        Text(row.explain + "\n\nTruongCleaner shows this number only. It cannot remove it.")
-                            .font(.callout)
-                            .frame(width: 280, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(14)
-                    }
-            }
+                })
         }
-        .controlSize(.small)
-        .fixedSize()
+        if list.isEmpty {
+            list.append(
+                ItemRowAction(title: "Learn More", accessibilityLabel: "Learn more about \(row.title)") {
+                    showsDetails = true
+                })
+        }
+        return list
     }
 }
 

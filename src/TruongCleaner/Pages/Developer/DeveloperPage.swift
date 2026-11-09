@@ -44,6 +44,7 @@ struct DeveloperPage: View {
                 model: model, settings: app.settings, access: app.access, showConfirm: $showProjectsConfirm)
         }
         .formStyle(.grouped)
+        .itemRowActionColumn(.compactButton)
         .disabled(model.files.isCleaning || model.projects.isCleaning)
         .safeAreaInset(edge: .bottom) { bottomBar }
         .cleanFlow(model: model.files, summary: model.filesConfirmation(), isPresented: $showFilesConfirm) {
@@ -194,24 +195,16 @@ struct DeveloperFileSection: View {
                 DeveloperCommandRow(command: command, model: model, pending: $pending)
             }
         } header: {
-            HStack {
-                if section.selectableRows.isEmpty {
-                    Text(title)
-                } else {
-                    Toggle(
-                        title,
-                        isOn: Binding(
-                            get: { model.files.isSelected(section) },
-                            set: { model.files.setSelected($0, for: section) }
-                        )
-                    )
-                    .toggleStyle(.checkbox)
-                    .accessibilityLabel("Select all in \(title)")
-                }
-                Spacer()
-                SizeText(bytes: section.bytes)
-                    .foregroundStyle(.secondary)
-            }
+            ItemRowSectionHeader(
+                title: title,
+                selection: section.selectableRows.isEmpty
+                    ? nil
+                    : Binding(
+                        get: { model.files.isSelected(section) },
+                        set: { model.files.setSelected($0, for: section) }
+                    ),
+                bytes: section.bytes
+            )
         } footer: {
             Text(footer)
         }

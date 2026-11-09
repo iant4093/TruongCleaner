@@ -110,6 +110,7 @@ struct SmartCleanPage: View {
             resultSections
         }
         .formStyle(.grouped)
+        .itemRowActionColumn(.icon)
     }
 
     private var scanningSubtitle: String {
@@ -151,6 +152,7 @@ struct SmartCleanPage: View {
             resultSections
         }
         .formStyle(.grouped)
+        .itemRowActionColumn(.icon)
         .disabled(model.isCleaning)
     }
 
@@ -182,24 +184,16 @@ struct SmartCleanPage: View {
     }
 
     private func sectionHeader(_ section: SmartCleanSection) -> some View {
-        HStack {
-            if section.selectableRows.isEmpty {
-                Text(section.category.smartCleanTitle)
-            } else {
-                Toggle(
-                    section.category.smartCleanTitle,
-                    isOn: Binding(
-                        get: { model.isSelected(section) },
-                        set: { model.setSelected($0, for: section) }
-                    )
-                )
-                .toggleStyle(.checkbox)
-                .accessibilityLabel("Select all in \(section.category.smartCleanTitle)")
-            }
-            Spacer()
-            SizeText(bytes: section.bytes)
-                .foregroundStyle(.secondary)
-        }
+        ItemRowSectionHeader(
+            title: section.category.smartCleanTitle,
+            selection: section.selectableRows.isEmpty
+                ? nil
+                : Binding(
+                    get: { model.isSelected(section) },
+                    set: { model.setSelected($0, for: section) }
+                ),
+            bytes: section.bytes
+        )
     }
 
     // MARK: Bottom bar
@@ -244,79 +238,57 @@ struct SmartCleanPage: View {
     }
 }
 
-/// One rule in the results: checkbox, explanation, size, and the items behind it.
+/// One rule in the results, as an `ItemRow`: checkbox, tile, explanation, tier badge, size, and the items
+/// behind it under the chevron.
 struct SmartCleanRuleRow: View {
     let row: SmartCleanRow
     let model: SmartCleanModel
     let access: AccessState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if row.topFindings.isEmpty {
-                summary
-            } else {
-                DisclosureGroup {
-                    ForEach(row.topFindings) { finding in
-                        ItemRow(finding: finding)
-                    }
-                    if row.result.findings.count > row.topFindings.count {
-                        Text("and \((row.result.findings.count - row.topFindings.count).formatted()) more")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                } label: {
-                    summary
+        ruleRow
+    }
+
+    private var ruleRow: ItemRow {
+        var item = ItemRow(
+            icon: .rule(row.rule),
+            title: String(localized: row.rule.title),
+            explain: String(localized: row.rule.explain),
+            size: row.sizeIsUnknown ? .unknown : .bytes(row.bytes)
+        )
+        .badge(badge)
+        if row.isSelectable {
+            item = item.selection(
+                Binding(
+                    get: { model.isSelected(row) },
+                    set: { model.setSelected($0, for: row) }
+                ))
+        }
+        if !row.topFindings.isEmpty {
+            item = item.disclosure {
+                ForEach(row.topFindings) { finding in
+                    FindingRow(finding: finding)
+                }
+                if row.result.findings.count > row.topFindings.count {
+                    Text("and \((row.result.findings.count - row.topFindings.count).formatted()) more")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
             }
-            if row.needsAccess {
+        }
+        if row.needsAccess {
+            item = item.footer {
                 NeedsAccessRow(kind: accessKind, openPrivacySettings: SmartCleanActions.openPrivacySettings)
             }
         }
+        return item
     }
 
-    private var summary: some View {
-        HStack(spacing: 10) {
-            if row.isSelectable {
-                Toggle(
-                    isOn: Binding(
-                        get: { model.isSelected(row) },
-                        set: { model.setSelected($0, for: row) }
-                    )
-                ) {
-                    titleAndExplanation
-                }
-                .toggleStyle(.checkbox)
-                .accessibilityLabel("\(String(localized: row.rule.title)), \(SizeText.spoken(row.bytes))")
-                .accessibilityHint(String(localized: row.rule.explain))
-            } else {
-                // Info rows and rows with nothing to clean never have a checkbox.
-                titleAndExplanation
-            }
-            Spacer(minLength: 8)
-            if let label = tierLabel {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            SizeText(bytes: row.bytes, isUnknown: row.sizeIsUnknown)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var titleAndExplanation: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(row.rule.title)
-            Text(row.rule.explain)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var tierLabel: String? {
+    private var badge: ItemRowBadge? {
         switch row.rule.tier {
-        case .safe: nil
-        case .review: "Review"
-        case .info: "Information only"
+        case .review: .review
+        case .info: .info
+        case .safe: row.needsAccess ? .needsAccess : nil
         }
     }
 
@@ -327,30 +299,40 @@ struct SmartCleanRuleRow: View {
 }
 
 /// One item under a rule: icon, name, size, Reveal in Finder. Space opens Quick Look.
-struct ItemRow: View {
+///
+/// Its size ends at the same x as the size of the rule row above it, and the Reveal button sits in the
+/// page's action column.
+struct FindingRow: View {
     let finding: Finding
     @State private var quickLookURL: URL?
 
+    @SwiftUI.Environment(\.itemRowActionColumn) private var column
+
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: ItemRowMetrics.gap) {
             FileIcon(url: finding.url)
             Text(finding.url.lastPathComponent)
                 .font(.callout)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .help(finding.url.path)
-            Spacer(minLength: 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             SizeText(bytes: finding.allocatedBytes)
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Button {
-                SmartCleanActions.reveal(finding.url)
-            } label: {
-                Image(systemName: "magnifyingglass.circle")
+                .lineLimit(1)
+                .frame(width: ItemRowMetrics.sizeWidth, alignment: .trailing)
+            if column != .none {
+                Button {
+                    SmartCleanActions.reveal(finding.url)
+                } label: {
+                    Image(systemName: "magnifyingglass.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Reveal in Finder")
+                .accessibilityLabel("Reveal \(finding.url.lastPathComponent) in Finder")
+                .frame(width: column.width, alignment: .trailing)
             }
-            .buttonStyle(.borderless)
-            .help("Reveal in Finder")
-            .accessibilityLabel("Reveal \(finding.url.lastPathComponent) in Finder")
         }
         .focusable()
         .quickLookPreview($quickLookURL)

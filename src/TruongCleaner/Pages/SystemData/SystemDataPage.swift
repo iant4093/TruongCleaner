@@ -65,6 +65,7 @@ struct SystemDataPage: View {
             }
         }
         .formStyle(.grouped)
+        .itemRowActionColumn(.buttonAndMenu)
         // Runs on appear. The model skips a load that is still fresh. A change in Full Disk Access
         // shows a banner; it never starts a scan (REQ-PERM-03).
         .task {
