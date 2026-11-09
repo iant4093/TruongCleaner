@@ -1,3 +1,5 @@
+import AppKit
+import CleanerActions
 import Foundation
 import Observation
 import os
@@ -10,6 +12,9 @@ nonisolated struct ReleaseInfo: Equatable, Sendable {
     let name: String
     /// Page of the release on github.com.
     let pageURL: URL
+    /// The two files an in-app update downloads, or `nil` when the release lacks them or their
+    /// addresses are not on the allow-list (`UpdateURLPolicy`).
+    let assets: UpdateAssets?
 
     /// Offset between a tag number and `CFBundleVersion` (CI adds it to the run number).
     static let bundleVersionOffset = 1000
@@ -24,6 +29,12 @@ nonisolated enum ReleaseParser {
         let tag_name: String
         let name: String?
         let html_url: String
+        let assets: [Asset]?
+    }
+
+    private nonisolated struct Asset: Decodable {
+        let name: String
+        let browser_download_url: String
     }
 
     /// Returns the release, or `nil` when the JSON is malformed, the tag is not `build-N`, or the
@@ -38,7 +49,20 @@ nonisolated enum ReleaseParser {
               url.host() == "github.com"
         else { return nil }
         let name = payload.name.flatMap { $0.isEmpty ? nil : $0 } ?? payload.tag_name
-        return ReleaseInfo(tagNumber: number, name: name, pageURL: url)
+        return ReleaseInfo(tagNumber: number, name: name, pageURL: url, assets: updateAssets(in: payload.assets ?? []))
+    }
+
+    /// `TruongCleaner.zip` and `SHA256SUMS`, if each appears exactly once with an allowed address.
+    private static func updateAssets(in assets: [Asset]) -> UpdateAssets? {
+        func address(of name: String) -> URL? {
+            let matches = assets.filter { $0.name == name }
+            guard matches.count == 1 else { return nil }
+            return URL(string: matches[0].browser_download_url)
+        }
+        guard let archive = address(of: UpdateDownloader.archiveName), let sums = address(of: "SHA256SUMS") else {
+            return nil
+        }
+        return UpdateAssets(archive: archive, checksums: sums)
     }
 
     /// True when the release is newer than the running `CFBundleVersion`. An unreadable running
@@ -53,6 +77,21 @@ nonisolated enum ReleaseParser {
 /// (REQ-DIST-05).
 @Observable @MainActor
 final class UpdateChecker {
+    /// Where an in-app update is.
+    enum InstallState: Equatable {
+        case idle
+        /// Downloading; the value is the fraction received.
+        case downloading(Double)
+        /// Unpacking and checking the download.
+        case verifying
+        /// Verified; about to be swapped in.
+        case ready
+        /// Swapping the app and relaunching.
+        case installing
+        /// Stopped; nothing was installed. Holds the message for the user.
+        case failed(String)
+    }
+
     /// Result of the last manual check, for the Settings page.
     enum ManualResult: Equatable {
         case upToDate
@@ -75,6 +114,9 @@ final class UpdateChecker {
         return latest
     }
 
+    /// The newest release found, newer than the running app, even if the banner was dismissed.
+    private(set) var latest: ReleaseInfo?
+
     /// When the last check finished, successful or not.
     private(set) var lastChecked: Date?
     /// True while a request is running.
@@ -82,12 +124,18 @@ final class UpdateChecker {
     /// Outcome of the last user-started check; `nil` before one runs.
     private(set) var manualResult: ManualResult?
 
-    private var latest: ReleaseInfo?
+    /// Progress of the in-app update.
+    private(set) var installState: InstallState = .idle
+
+    /// Why the running app cannot replace itself where it is, read off the main actor when a release is found.
+    private var locationBlocker: UpdateError?
     private var dismissedBuild: Int
+    private var installTask: Task<Void, Never>?
 
     @ObservationIgnored private let settings: SettingsStore
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let runningVersion: String?
+    @ObservationIgnored private let installService = UpdateInstallService()
 
     init(
         settings: SettingsStore,
@@ -121,7 +169,139 @@ final class UpdateChecker {
         defaults.set(dismissedBuild, forKey: Self.dismissedBuildKey)
     }
 
+    // MARK: In-app update
+
+    /// "Version 1.0 (build 1001)" for the running app.
+    static var versionText: String {
+        let info = Bundle.main
+        let version = info.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = info.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "Version \(version) (build \(build))"
+    }
+
+    /// Why the update cannot be installed from inside the app, or `nil` when it can.
+    /// Plain words for the Settings page and the banner.
+    var installBlocker: String? {
+        guard let release = latest else { return "There is no newer build." }
+        guard release.assets != nil else { return "This release has no update file the app can install." }
+        guard UpdateIdentity.current() != nil else { return "This copy of TruongCleaner cannot read its own version." }
+        switch locationBlocker {
+        case nil: return nil
+        case .notWritable?: return "The folder that holds TruongCleaner is not writable. Use Terminal instead."
+        case _?: return "Move TruongCleaner to the Applications folder to update it here, or use Terminal."
+        }
+    }
+
+    /// True when Install Update can be pressed.
+    var canInstall: Bool {
+        guard installBlocker == nil else { return false }
+        switch installState {
+        case .idle, .failed: return true
+        case .downloading, .verifying, .ready, .installing: return false
+        }
+    }
+
+    /// True while a download or install is running.
+    var isInstalling: Bool {
+        switch installState {
+        case .downloading, .verifying, .ready, .installing: true
+        case .idle, .failed: false
+        }
+    }
+
+    /// True while the download can still be cancelled.
+    var canCancelInstall: Bool {
+        switch installState {
+        case .downloading, .verifying: true
+        case .idle, .ready, .installing, .failed: false
+        }
+    }
+
+    /// Downloads, checks and installs the newest build, then reopens the app.
+    /// Nothing is installed unless every check passes; a failure leaves this version in place.
+    func install() {
+        guard canInstall, installTask == nil, let assets = latest?.assets,
+              let identity = UpdateIdentity.current()
+        else { return }
+        installState = .downloading(0)
+        installTask = Task { [weak self] in
+            await self?.runInstall(assets: assets, identity: identity)
+            self?.installTask = nil
+        }
+    }
+
+    /// Stops a download in progress. No effect once the swap has begun.
+    func cancelInstall() {
+        guard canCancelInstall else { return }
+        installTask?.cancel()
+    }
+
+    /// Removes what an earlier update left behind: the old app (to the Trash) and stale temporary
+    /// folders. Runs once at launch, off the main actor.
+    @concurrent
+    static func removeLeftovers() async {
+        guard let identifier = Bundle.main.bundleIdentifier else { return }
+        let appFolder = Bundle.main.bundleURL.deletingLastPathComponent()
+        let report = await UpdateCleanup().removeLeftovers(in: appFolder, bundleIdentifier: identifier)
+        if !report.trashedBundles.isEmpty || !report.removedFolders.isEmpty {
+            log.info(
+                "Update cleanup: \(report.trashedBundles.count) old app(s) trashed, \(report.removedFolders.count) folder(s) removed")
+        }
+    }
+
     // MARK: Private
+
+    /// `stat` and `access` on the app's folder, off the main actor.
+    @concurrent
+    private static func readLocationBlocker() async -> UpdateError? {
+        UpdateInstallService().blocker(for: Bundle.main.bundleURL)
+    }
+
+    private func runInstall(assets: UpdateAssets, identity: UpdateIdentity) async {
+        let running = Bundle.main.bundleURL
+        let service = installService
+        do {
+            let prepared = try await service.prepare(assets, identity: identity) { [weak self] stage in
+                Task { @MainActor in self?.apply(stage) }
+            }
+            if Task.isCancelled {
+                service.discard(prepared)
+                throw UpdateError.cancelled
+            }
+            installState = .ready
+            installState = .installing
+            _ = try await service.install(prepared, replacing: running)
+        } catch UpdateError.cancelled, is CancellationError {
+            installState = .idle
+            return
+        } catch {
+            Self.log.info("Update failed: \(error.localizedDescription, privacy: .public)")
+            installState = .failed((error as? UpdateError)?.errorDescription ?? error.localizedDescription)
+            return
+        }
+        await relaunch(at: running)
+    }
+
+    private func apply(_ stage: UpdateStage) {
+        switch (installState, stage) {
+        case (.downloading, .downloading(let fraction)): installState = .downloading(fraction)
+        case (.downloading, .verifying): installState = .verifying
+        default: break
+        }
+    }
+
+    /// Opens the new copy as a second instance, then quits this one.
+    private func relaunch(at url: URL) async {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        do {
+            _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+            NSApp.terminate(nil)
+        } catch {
+            Self.log.info("Relaunch failed: \(error.localizedDescription, privacy: .public)")
+            installState = .failed("TruongCleaner was updated, but could not reopen itself. Quit it and open it again.")
+        }
+    }
 
     private func check(manual: Bool) async {
         guard !isChecking, let endpoint = Self.endpoint else { return }
@@ -142,6 +322,7 @@ final class UpdateChecker {
             return
         }
         if ReleaseParser.isNewer(release, than: runningVersion) {
+            locationBlocker = await Self.readLocationBlocker()
             latest = release
             if manual { manualResult = .available(release.buildNumber) }
         } else {

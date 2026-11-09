@@ -3,6 +3,7 @@ import SwiftUI
 /// Delete mode and update checks.
 struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         @Bindable var settings = model.settings
@@ -28,11 +29,12 @@ struct GeneralSettings: View {
                 Toggle("Check for updates automatically", isOn: $settings.checksForUpdatesAutomatically)
                 Text(
                     "Once a day, TruongCleaner asks GitHub for the newest build. "
-                        + "It sends nothing else and never installs anything by itself."
+                        + "It sends nothing else and installs an update only when you press Install Update."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+                LabeledContent("This version") { Text(UpdateChecker.versionText) }
                 LabeledContent("Last checked") {
                     if let date = updates.lastChecked {
                         Text(date.formatted(date: .abbreviated, time: .shortened))
@@ -54,9 +56,66 @@ struct GeneralSettings: View {
                         Text(text).foregroundStyle(.secondary)
                     }
                 }
+                if let release = updates.latest {
+                    installRows(release, updates: updates)
+                }
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func installRows(_ release: ReleaseInfo, updates: UpdateChecker) -> some View {
+        LabeledContent("Latest build") { Text("Build \(release.buildNumber)") }
+
+        LabeledContent {
+            HStack {
+                if updates.canCancelInstall {
+                    Button("Cancel") { updates.cancelInstall() }
+                }
+                Button("Install Update") { updates.install() }
+                    .disabled(!updates.canInstall)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Install the update here")
+                if let reason = updates.installBlocker {
+                    Text(reason).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+
+        switch updates.installState {
+        case .idle:
+            EmptyView()
+        case .downloading(let fraction):
+            ProgressView(value: fraction) { Text("Downloading…") }
+                .accessibilityValue(Text(fraction, format: .percent.precision(.fractionLength(0))))
+        case .verifying:
+            ProgressView { Text("Checking the download…") }
+        case .ready, .installing:
+            ProgressView { Text("Installing and reopening…") }
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel("Update failed. \(message)")
+        }
+
+        Text(
+            "The app downloads the update from GitHub, checks its checksum and signature, "
+                + "replaces itself, and reopens. The old copy goes to the Trash on the next launch. "
+                + "macOS may ask for Full Disk Access again after an update."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+        LabeledContent("Other ways") {
+            HStack {
+                Button("View Release Notes") { openURL(release.pageURL) }
+                Button("Install with Terminal Instead") { SettingsActions.copy(UpdateChecker.installCommand) }
+                    .help("Copies the install command. Paste it into Terminal.")
+            }
+        }
     }
 
     private func statusText(_ result: UpdateChecker.ManualResult?) -> String? {
