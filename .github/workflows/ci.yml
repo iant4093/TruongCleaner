@@ -59,6 +59,7 @@ jobs:
         env:
           # 3-core shared runner: widen promptness checks (see Tests/Fixtures/TimingBudget.swift).
           TC_TIMING_SLACK: "10"
+          TC_TEST_PARALLEL: "0"
         run: bash scripts/test.sh package
       - name: Upload test logs
         if: always()

@@ -1,4 +1,5 @@
 import CleanerScanner
+import CleanerTestSupport
 import Darwin
 import Foundation
 import Testing
@@ -62,7 +63,7 @@ struct SupervisedProcessTests {
         let outcome = await run("/bin/sleep", ["30"], timeout: .milliseconds(300))
         #expect(outcome.timedOut)
         #expect(!outcome.exitedNormally)
-        #expect(started.duration(to: clock.now) < .seconds(5))
+        #expect(started.duration(to: clock.now) < timingBudget(.seconds(5)))
     }
 
     @Test func supervised_aProcessThatIgnoresTerminateIsKilledAfterTheGrace() async {
@@ -74,7 +75,7 @@ struct SupervisedProcessTests {
         #expect(outcome.timedOut)
         #expect(outcome.terminationStatus == SIGKILL)
         #expect(!outcome.exitedNormally)
-        #expect(started.duration(to: clock.now) < .seconds(5))
+        #expect(started.duration(to: clock.now) < timingBudget(.seconds(5)))
     }
 
     @Test func supervised_aBurstOfCommandsDoesNotParkAThreadEach() async {
