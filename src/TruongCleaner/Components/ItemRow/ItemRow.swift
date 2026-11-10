@@ -187,19 +187,23 @@ struct ItemRow: View {
 
     private var textColumn: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(title)
-                .alignmentGuide(.titleCenter) { $0[VerticalAlignment.center] }
-            if let explain {
-                Text(note.map { "\(explain) \($0)" } ?? explain)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .help(fullText)
-                    .onTapGesture { showsInfo = true }
-                    .accessibilityAction(named: "Show details") { showsInfo = true }
-                    .popover(isPresented: $showsInfo, arrowEdge: .bottom) { infoPopover }
+            // Like System Settings, the tile, checkbox, chevron, badge, size and button are
+            // centered on the title + explanation block, not on the title line alone.
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                if let explain {
+                    Text(note.map { "\(explain) \($0)" } ?? explain)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help(fullText)
+                        .onTapGesture { showsInfo = true }
+                        .accessibilityAction(named: "Show details") { showsInfo = true }
+                        .popover(isPresented: $showsInfo, arrowEdge: .bottom) { infoPopover }
+                }
             }
+            .alignmentGuide(.titleCenter) { $0[VerticalAlignment.center] }
             if let footerView {
                 footerView
             }
