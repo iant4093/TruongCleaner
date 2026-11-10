@@ -68,8 +68,17 @@ struct RunPlan {
         self.states = Array(repeating: RuleState(), count: count)
         self.startedAnnounced = Array(repeating: false, count: count)
         self.delivered = Array(repeating: nil, count: count)
-        let roots = request.rules.map { RuleRoots.resolve($0, in: request.environment) }
-        self.overlap = RootOverlap(rules: request.rules, roots: roots)
+        // Planning reads the file system (`*` levels list folders, hints read names), so it checks for
+        // cancellation between rules and between roots. After a stop the remaining rules get no roots
+        // and are marked partial, and the scan goes straight to its report (REQ-SCAN-05).
+        let roots = request.rules.map { rule -> RuleRoots in
+            guard !Task.isCancelled else { return RuleRoots(incomplete: true) }
+            return RuleRoots.resolve(rule, in: request.environment)
+        }
+        // Whether an item holds the root of another rule does not depend on that rule being enabled:
+        // turning a rule off must not make its folder easier to offer from a broader rule. So the overlap
+        // covers the whole catalog, plus any requested rule that is not in it.
+        self.overlap = Self.makeOverlap(request: request, requestRoots: roots)
         self.claimGuard = ClaimGuard(rules: request.rules, roots: roots)
 
         var hinted: [(unit: Unit, hint: Int)] = []
@@ -83,7 +92,7 @@ struct RunPlan {
             states[index].excluded = resolution.excluded
             states[index].remaining = resolution.roots.count
             for root in resolution.roots {
-                let hint = largestFirst ? RootHint.entryCount(of: root) : 0
+                let hint = largestFirst && !Task.isCancelled ? RootHint.entryCount(of: root) : 0
                 hinted.append((Unit(ruleIndex: index, rule: rule, root: root, slot: slot), hint))
                 slot += 1
             }
@@ -97,6 +106,20 @@ struct RunPlan {
             announceStart(of: index)
             states[index].finished = clock.now
         }
+    }
+
+    /// Builds the overlap guard from every catalog rule that can offer items, and from the request's rules.
+    /// Roots of the requested rules are reused; the others are resolved here.
+    private static func makeOverlap(request: ScanRequest, requestRoots: [RuleRoots]) -> RootOverlap {
+        var rules = request.rules
+        var roots = requestRoots
+        var known = Set(rules.map(\.id))
+        for rule in Catalog.all where RuleRoots.offersItems(rule) && known.insert(rule.id).inserted {
+            if Task.isCancelled { break }
+            rules.append(rule)
+            roots.append(RuleRoots.resolve(rule, in: request.environment))
+        }
+        return RootOverlap(rules: rules, roots: roots)
     }
 
     /// True while roots are waiting to start.
@@ -116,7 +139,7 @@ struct RunPlan {
         var state = states[index]
         for finding in outcome.findings {
             // An item that holds another rule's root is that rule's to offer, not ours.
-            if overlap.isCovered(finding.url, byRuleOtherThan: index) {
+            if overlap.isCovered(finding.url, byRuleOtherThan: request.rules[index].id) {
                 state.skipped[.coveredByOtherRule, default: 0] += 1
             } else {
                 state.findings.append(finding)

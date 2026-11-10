@@ -241,7 +241,7 @@ public enum LeftoverFinder {
 
     private static func measureDirectory(_ url: URL) async -> Measured? {
         let options = WalkOptions(maxWorkers: 3, totalsDepth: 0, topFilesCount: 0)
-        guard let result = try? await BulkWalker.walk(url, options: options), let root = result.nodes.first else {
+        guard let result = try? await SharedBudgetWalk.walk(url, options: options), let root = result.nodes.first else {
             return nil
         }
         return Measured(
