@@ -68,6 +68,26 @@ struct GeneralSettings: View {
     private func installRows(_ release: ReleaseInfo, updates: UpdateChecker) -> some View {
         LabeledContent("Latest build") { Text("Build \(release.buildNumber)") }
 
+        if updates.latestIsUnsigned {
+            // The app installs only signed updates, so there is no Install button yet.
+            Text(UpdateChecker.unsignedMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            installControls(updates: updates)
+        }
+
+        LabeledContent("Other ways") {
+            HStack {
+                Button("View Release Notes") { openURL(release.pageURL) }
+                Button("Install with Terminal Instead") { SettingsActions.copy(UpdateChecker.installCommand) }
+                    .help("Copies the install command. Paste it into Terminal.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func installControls(updates: UpdateChecker) -> some View {
         LabeledContent {
             HStack {
                 if updates.canCancelInstall {
@@ -108,14 +128,6 @@ struct GeneralSettings: View {
         )
         .font(.caption)
         .foregroundStyle(.secondary)
-
-        LabeledContent("Other ways") {
-            HStack {
-                Button("View Release Notes") { openURL(release.pageURL) }
-                Button("Install with Terminal Instead") { SettingsActions.copy(UpdateChecker.installCommand) }
-                    .help("Copies the install command. Paste it into Terminal.")
-            }
-        }
     }
 
     private func statusText(_ result: UpdateChecker.ManualResult?) -> String? {

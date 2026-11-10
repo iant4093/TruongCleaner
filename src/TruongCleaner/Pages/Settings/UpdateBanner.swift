@@ -19,13 +19,15 @@ struct UpdateBanner: View {
                 progressOrHint
             }
             Spacer(minLength: 8)
-            if model.updates.canCancelInstall {
-                Button("Cancel") { model.updates.cancelInstall() }
+            if !model.updates.latestIsUnsigned {
+                if model.updates.canCancelInstall {
+                    Button("Cancel") { model.updates.cancelInstall() }
+                }
+                Button("Install Update") { model.updates.install() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!model.updates.canInstall)
+                    .help(model.updates.installBlocker ?? "Download, check and install this build, then reopen")
             }
-            Button("Install Update") { model.updates.install() }
-                .buttonStyle(.borderedProminent)
-                .disabled(!model.updates.canInstall)
-                .help(model.updates.installBlocker ?? "Download, check and install this build, then reopen")
             Button("Copy Install Command") { SettingsActions.copy(UpdateChecker.installCommand) }
             Button("View Release") { openURL(release.pageURL) }
                 .help(release.name)

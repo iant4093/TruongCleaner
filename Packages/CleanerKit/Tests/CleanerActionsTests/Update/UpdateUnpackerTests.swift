@@ -11,6 +11,7 @@ struct UpdateUnpackerTests {
         let archive = folder.appending(path: "TruongCleaner.zip")
         try FixtureApp.zip(contentsOf: tree.url(for: contents), to: archive)
         try Data().write(to: folder.appending(path: "SHA256SUMS"))
+        try Data().write(to: folder.appending(path: "SHA256SUMS.sig"))
         return DownloadedUpdate(folder: folder, archive: archive)
     }
 
@@ -36,6 +37,32 @@ struct UpdateUnpackerTests {
             try FixtureApp.make(in: tree, at: "payload/TruongCleaner.app")
             try tree.addFile("payload/readme.txt", size: 4)
             let download = try downloadFolder(tree, zipping: "payload")
+
+            await #expect(throws: UpdateError.unexpectedArchiveContents) {
+                try await UpdateUnpacker().unpack(download)
+            }
+        }
+    }
+
+    @Test func unpack_refusesAnUnknownFileNextToTheDownload() async throws {
+        try await withUpdateTree { tree in
+            try tree.addDirectory("tmp")
+            try FixtureApp.make(in: tree, at: "payload/TruongCleaner.app")
+            let download = try downloadFolder(tree, zipping: "payload")
+            try Data("x".utf8).write(to: download.folder.appending(path: "notes.txt"))
+
+            await #expect(throws: UpdateError.unexpectedArchiveContents) {
+                try await UpdateUnpacker().unpack(download)
+            }
+        }
+    }
+
+    @Test func unpack_refusesADownloadFolderWithoutTheSignatureFile() async throws {
+        try await withUpdateTree { tree in
+            try tree.addDirectory("tmp")
+            try FixtureApp.make(in: tree, at: "payload/TruongCleaner.app")
+            let download = try downloadFolder(tree, zipping: "payload")
+            try FileManager.default.removeItem(at: download.folder.appending(path: "SHA256SUMS.sig"))
 
             await #expect(throws: UpdateError.unexpectedArchiveContents) {
                 try await UpdateUnpacker().unpack(download)
@@ -74,6 +101,7 @@ struct UpdateUnpackerTests {
             let archive = folder.appending(path: "TruongCleaner.zip")
             try Data("this is not a zip file".utf8).write(to: archive)
             try Data().write(to: folder.appending(path: "SHA256SUMS"))
+            try Data().write(to: folder.appending(path: "SHA256SUMS.sig"))
 
             let error = try await #require(throws: UpdateError.self) {
                 try await UpdateUnpacker().unpack(DownloadedUpdate(folder: folder, archive: archive))

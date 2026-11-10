@@ -9,12 +9,15 @@ struct UpdateDownloaderTests {
     private let zipBytes = Data("pretend this is a zip".utf8)
 
     private func downloader(
-        _ tree: FixtureTree, archive: Data, checksums: String, delay: Duration = .zero,
-        timeLimit: Duration = .seconds(30)
-    ) -> (UpdateDownloader, FakeFetcher) {
-        let fetcher = FakeFetcher(archive: archive, checksums: Data(checksums.utf8), delay: delay)
+        _ tree: FixtureTree, archive: Data, checksums: String, signer: FixtureSigner = FixtureSigner(),
+        signature: Data? = nil, delay: Duration = .zero, timeLimit: Duration = .seconds(30)
+    ) throws -> (UpdateDownloader, FakeFetcher) {
+        let sums = Data(checksums.utf8)
+        // Signed by `signer` unless the test hands in its own signature file.
+        let signatureFile = try signature ?? signer.signatureFile(for: sums)
+        let fetcher = FakeFetcher(archive: archive, checksums: sums, signature: signatureFile, delay: delay)
         let downloader = UpdateDownloader(
-            fetcher: fetcher, workRoot: tree.url(for: "tmp"), timeLimit: timeLimit)
+            fetcher: fetcher, workRoot: tree.url(for: "tmp"), timeLimit: timeLimit, trust: signer.trust)
         return (downloader, fetcher)
     }
 
@@ -27,7 +30,7 @@ struct UpdateDownloaderTests {
     @Test func download_acceptsAMatchingChecksum() async throws {
         try await withUpdateTree { tree in
             try prepareTmp(tree)
-            let (downloader, fetcher) = downloader(
+            let (downloader, fetcher) = try downloader(
                 tree, archive: zipBytes, checksums: FixtureAssets.checksumLine(for: zipBytes))
             let progress = FractionLog()
             let result = try await downloader.download(FixtureAssets.make()) { progress.add($0) }
@@ -35,7 +38,7 @@ struct UpdateDownloaderTests {
             #expect(try Data(contentsOf: result.archive) == zipBytes)
             #expect(result.folder.lastPathComponent.hasPrefix(UpdateWorkspace.folderPrefix))
             #expect(result.archive.deletingLastPathComponent() == result.folder)
-            #expect(Set(fetcher.requestedURLs) == [FixtureAssets.archiveURL, FixtureAssets.checksumsURL])
+            #expect(Set(fetcher.requestedURLs) == [FixtureAssets.archiveURL, FixtureAssets.checksumsURL, FixtureAssets.signatureURL])
             let values = progress.values
             #expect(values.last == 1)
             #expect(values.allSatisfy { (0...1).contains($0) })
@@ -46,7 +49,7 @@ struct UpdateDownloaderTests {
         try await withUpdateTree { tree in
             try prepareTmp(tree)
             let wrong = FixtureAssets.checksumLine(for: Data("different bytes".utf8))
-            let (downloader, _) = downloader(tree, archive: zipBytes, checksums: wrong)
+            let (downloader, _) = try downloader(tree, archive: zipBytes, checksums: wrong)
 
             await #expect(throws: UpdateError.checksumMismatch) {
                 try await downloader.download(FixtureAssets.make()) { _ in }
@@ -67,7 +70,7 @@ struct UpdateDownloaderTests {
     func download_refusesAnUnusableChecksumFile(_ checksums: String) async throws {
         try await withUpdateTree { tree in
             try prepareTmp(tree)
-            let (downloader, _) = downloader(tree, archive: zipBytes, checksums: checksums)
+            let (downloader, _) = try downloader(tree, archive: zipBytes, checksums: checksums)
 
             await #expect(throws: UpdateError.checksumMissing) {
                 try await downloader.download(FixtureAssets.make()) { _ in }
@@ -96,7 +99,7 @@ struct UpdateDownloaderTests {
     @Test func download_stopsAfterTheTimeLimit() async throws {
         try await withUpdateTree { tree in
             try prepareTmp(tree)
-            let (downloader, _) = downloader(
+            let (downloader, _) = try downloader(
                 tree, archive: zipBytes, checksums: FixtureAssets.checksumLine(for: zipBytes),
                 delay: .seconds(30), timeLimit: .milliseconds(200))
 
@@ -110,7 +113,7 @@ struct UpdateDownloaderTests {
     @Test func download_stopsWhenCancelled() async throws {
         try await withUpdateTree { tree in
             try prepareTmp(tree)
-            let (downloader, _) = downloader(
+            let (downloader, _) = try downloader(
                 tree, archive: zipBytes, checksums: FixtureAssets.checksumLine(for: zipBytes), delay: .seconds(30))
             let assets = try FixtureAssets.make()
             let task = Task { try await downloader.download(assets) { _ in } }

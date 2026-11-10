@@ -111,13 +111,16 @@ extension UpdateIdentity {
         bundleIdentifier: FixtureApp.ourID, bundleVersion: 1000, system: SystemVersion(major: 26))
 }
 
-/// A release's two asset addresses, on the allow-list.
+/// A release's asset addresses, on the allow-list.
 enum FixtureAssets {
     static let archiveURL = URL(string: "https://github.com/iant4093/TruongCleaner/releases/download/build-21/TruongCleaner.zip")!
     static let checksumsURL = URL(string: "https://github.com/iant4093/TruongCleaner/releases/download/build-21/SHA256SUMS")!
+    static let signatureURL = URL(string: "https://github.com/iant4093/TruongCleaner/releases/download/build-21/SHA256SUMS.sig")!
 
-    static func make() throws -> UpdateAssets {
-        try #require(UpdateAssets(archive: archiveURL, checksums: checksumsURL))
+    /// The release's assets; `signed: false` leaves out the signature address.
+    static func make(signed: Bool = true) throws -> UpdateAssets {
+        try #require(
+            UpdateAssets(archive: archiveURL, checksums: checksumsURL, signature: signed ? signatureURL : nil))
     }
 
     /// `shasum -a 256` output for `data`, named `TruongCleaner.zip`.
@@ -127,14 +130,29 @@ enum FixtureAssets {
     }
 }
 
+/// A throwaway Ed25519 key for one test. Nothing here touches the Keychain.
+struct FixtureSigner {
+    let key = Curve25519.Signing.PrivateKey()
+
+    /// Trusts only this signer's public key.
+    var trust: UpdateTrust { UpdateTrust(publicKeys: [key.publicKey]) }
+
+    /// Contents of a `SHA256SUMS.sig` for `message`: base64 of the signature and a newline.
+    func signatureFile(for message: Data) throws -> Data {
+        Data((try key.signature(for: message).base64EncodedString() + "\n").utf8)
+    }
+}
+
 /// Serves fixture bytes instead of using the network. Records which addresses were asked for.
 struct FakeFetcher: UpdateFetcher {
     var files: [URL: Data]
     var delay: Duration = .zero
     private let requested = OSAllocatedUnfairLock<[URL]>(initialState: [])
 
-    init(archive: Data, checksums: Data, delay: Duration = .zero) {
+    /// - Parameter signature: Served as `SHA256SUMS.sig` when given.
+    init(archive: Data, checksums: Data, signature: Data? = nil, delay: Duration = .zero) {
         files = [FixtureAssets.archiveURL: archive, FixtureAssets.checksumsURL: checksums]
+        if let signature { files[FixtureAssets.signatureURL] = signature }
         self.delay = delay
     }
 
@@ -147,12 +165,15 @@ struct FakeFetcher: UpdateFetcher {
         requested.withLock { $0.append(url) }
         if delay > .zero { try await Task.sleep(for: delay) }
         guard let data = files[url] else { throw UpdateError.downloadFailed("not found") }
+        // Like the real fetcher: a body over the limit is an error.
+        guard Int64(data.count) <= maxBytes else { throw UpdateError.downloadFailed("the file is too large") }
         let size = Int64(data.count)
         progress(size / 2, size)
         try data.write(to: destination)
         progress(size, size)
     }
 }
+
 
 /// Real file moves, except the listed calls (1-based) fail. A failing second move can leave a
 /// half-copied folder at the destination first, as the cross-volume copy fallback does.
