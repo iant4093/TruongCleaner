@@ -134,15 +134,65 @@ public struct LeftoverEntry: Sendable, Hashable {
     public var metadataIdentifier: String?
     /// The plist of a launch agent or daemon.
     public var launchJob: LaunchJob?
+    /// What the folder holds, when the caller measured it. Nil means not measured.
+    public var contents: LeftoverContents?
 
     /// Creates an entry.
     public init(
-        name: String, isDirectory: Bool = true, metadataIdentifier: String? = nil, launchJob: LaunchJob? = nil
+        name: String, isDirectory: Bool = true, metadataIdentifier: String? = nil, launchJob: LaunchJob? = nil,
+        contents: LeftoverContents? = nil
     ) {
         self.name = name
         self.isDirectory = isDirectory
         self.metadataIdentifier = metadataIdentifier
         self.launchJob = launchJob
+        self.contents = contents
+    }
+}
+
+/// What a candidate folder holds, as far as the caller could tell. A field that is nil was not measured.
+public struct LeftoverContents: Sendable, Hashable {
+    /// Allocated bytes of the whole folder.
+    public var allocatedBytes: Int64?
+    /// Whether `Data/Documents` (a container's document folder) holds anything.
+    public var hasDocuments: Bool?
+    /// Whether the folder holds a virtual machine or disk image anywhere inside (see
+    /// `LeftoverMatcher.isVirtualMachineOrDiskImage(name:allocatedBytes:)`).
+    public var hasDiskImages: Bool?
+
+    /// Creates a description.
+    public init(allocatedBytes: Int64? = nil, hasDocuments: Bool? = nil, hasDiskImages: Bool? = nil) {
+        self.allocatedBytes = allocatedBytes
+        self.hasDocuments = hasDocuments
+        self.hasDiskImages = hasDiskImages
+    }
+
+    /// Whether every field was measured.
+    public var isComplete: Bool {
+        allocatedBytes != nil && hasDocuments != nil && hasDiskImages != nil
+    }
+}
+
+/// A reason to look at a folder before removing it, which makes a matched folder `.review`.
+public enum LeftoverWarning: Sendable, Hashable {
+    /// It holds a virtual machine or a disk image (`Docker.raw`, `*.utm`, `*.pvm`, `*.vmwarevm`, `data.img`,
+    /// `*.sparsebundle`, `*.dmg`). Docker volumes and VM disks hold data nobody can rebuild.
+    case virtualMachinesOrDiskImages
+    /// `Data/Documents` is not empty.
+    case documents
+    /// It is larger than ``LeftoverMatcher/largeFolderBytes``.
+    case large
+    /// What is inside could not be read, so the check for other apps' files could not run.
+    case unreadable
+
+    /// One plain sentence for the screen.
+    public var text: String {
+        switch self {
+        case .virtualMachinesOrDiskImages: "Contains virtual machines or disk images."
+        case .documents: "Contains documents."
+        case .large: "It is larger than 1 GB."
+        case .unreadable: "What is inside could not be read."
+        }
     }
 }
 
@@ -164,10 +214,13 @@ public enum LeftoverEvidence: Sendable, Hashable {
     case launchJobLabel(label: String)
     /// The name is the app's name.
     case appName(String)
+    /// The base evidence, plus a reason to look before removing. The folder is `.review`.
+    indirect case withWarning(LeftoverWarning, LeftoverEvidence)
 
     /// One plain sentence for the screen.
     public var text: String {
         switch self {
+        case .withWarning(let warning, let base): "\(base.text) \(warning.text)"
         case .exactBundleID(let id): "Named after the app’s ID, \(id)."
         case .bundleIDPrefix(let id): "Name starts with the app’s ID, \(id)."
         case .containerMetadata(let id): "Container that belongs to \(id), by its own record."

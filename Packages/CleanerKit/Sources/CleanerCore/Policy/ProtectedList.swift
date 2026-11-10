@@ -94,6 +94,7 @@ public enum ProtectedList {
         ProtectedEntry("~/Library/Application Support/FileProvider/**", .syncAndIdentity),
         ProtectedEntry("~/Library/Keychains/**", .syncAndIdentity),
         ProtectedEntry("~/Library/Accounts/**", .syncAndIdentity),
+        ProtectedEntry("~/Library/Application Support/CloudDocs/**", .syncAndIdentity),
     ]
 
     private static let appleData: [ProtectedEntry] = [
@@ -102,7 +103,10 @@ public enum ProtectedList {
         ProtectedEntry("~/Library/Messages/**", .appleData, except: ["Caches/Previews", "StickerCache"]),
         ProtectedEntry("~/Library/Calendars/**", .appleData),
         ProtectedEntry("~/Library/Contacts/**", .appleData),
-        ProtectedEntry("~/Pictures/*.photoslibrary/**", .appleData),
+        // A Photos library can live anywhere (an external drive, `~/Movies`, a project folder).
+        ProtectedEntry("**/*.photoslibrary/**", .appleData),
+        // Notes keeps its real store in `group.com.apple.notes`; other Apple apps do the same.
+        ProtectedEntry("~/Library/Group Containers/group.com.apple.*/**", .appleData),
         ProtectedEntry("~/Library/Safari/**", .appleData),
         ProtectedEntry("~/Library/Containers/com.apple.Notes/**", .appleData),
     ]
@@ -130,6 +134,11 @@ public enum ProtectedList {
         ProtectedEntry("~/.ollama/models/**", .agentState),
         ProtectedEntry("~/.lmstudio/models/**", .agentState),
         ProtectedEntry("~/.cache/huggingface/**", .agentState),
+        ProtectedEntry("~/.gemini/**", .agentState),
+        ProtectedEntry("~/.continue/**", .agentState),
+        ProtectedEntry("~/.codeium/**", .agentState),
+        ProtectedEntry("~/.aider*/**", .agentState),
+        ProtectedEntry("~/Library/Application Support/Claude/**", .agentState),
     ]
 
     private static let liveStores: [ProtectedEntry] = [
@@ -171,5 +180,21 @@ public enum ProtectedList {
         ProtectedEntry("**/*ledger-live*/**", .passwordManager),
         ProtectedEntry("**/*exodus*/**", .passwordManager),
         ProtectedEntry("**/*wasabi*/**", .passwordManager),
+        ProtectedEntry("**/*enpass*/**", .passwordManager),
+        ProtectedEntry("**/*strongbox*/**", .passwordManager),
+        ProtectedEntry("**/*macpass*/**", .passwordManager),
+        ProtectedEntry("**/*keepersecurity*/**", .passwordManager),
+        ProtectedEntry("**/com.callpod.*/**", .passwordManager),
+        ProtectedEntry("**/Keeper Password Manager/**", .passwordManager),
+        ProtectedEntry("**/*nordpass*/**", .passwordManager),
+        ProtectedEntry("**/*proton pass*/**", .passwordManager),
+        ProtectedEntry("**/*protonpass*/**", .passwordManager),
+        ProtectedEntry("**/me.proton.pass*/**", .passwordManager),
+        ProtectedEntry("**/*lastpass*/**", .passwordManager),
+        ProtectedEntry("**/*roboform*/**", .passwordManager),
+        ProtectedEntry("**/Application Support/Bitcoin/**", .passwordManager),
+        ProtectedEntry("~/.bitcoin/**", .passwordManager),
+        ProtectedEntry("**/*electrum*/**", .passwordManager),
+        ProtectedEntry("**/*sparrow*/**", .passwordManager),
     ]
 }

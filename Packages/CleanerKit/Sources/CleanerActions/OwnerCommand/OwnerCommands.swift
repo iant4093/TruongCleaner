@@ -47,7 +47,9 @@ public enum Preflight: Sendable, Hashable {
     case noBootedSimulator
     /// `docker info` must succeed (the daemon answers).
     case dockerReachable
-    /// No process with this name may be running.
+    /// The tool with this name may not be running: no process named so, and no interpreter
+    /// (`node`, `ruby`, `bash`, ...) running a script of that name (`node .../pnpm.cjs`).
+    /// See ``ProcessOwnerMatcher``.
     case processNotRunning(String)
 }
 

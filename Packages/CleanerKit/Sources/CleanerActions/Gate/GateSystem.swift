@@ -22,6 +22,8 @@ struct EntryIdentity: Equatable {
 struct DirectoryChild {
     var name: [UInt8]
     var modified: Date?
+    /// Whether the child is a folder. Nil when its type could not be read.
+    var isDirectory: Bool?
 }
 
 /// Thin wrappers over the system calls the gate needs. All of them look at the entry itself
@@ -129,7 +131,7 @@ enum GateSystem {
         var list = attrlist()
         list.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
         list.commonattr = attrgroup_t(ATTR_CMN_RETURNED_ATTRS) | attrgroup_t(ATTR_CMN_ERROR)
-            | attrgroup_t(ATTR_CMN_NAME) | attrgroup_t(ATTR_CMN_MODTIME)
+            | attrgroup_t(ATTR_CMN_NAME) | attrgroup_t(ATTR_CMN_OBJTYPE) | attrgroup_t(ATTR_CMN_MODTIME)
 
         let bufferSize = 128 * 1024
         let buffer = UnsafeMutableRawPointer.allocate(byteCount: bufferSize, alignment: 16)
@@ -160,7 +162,8 @@ enum GateSystem {
         return result
     }
 
-    /// Parses one packed entry: length, returned set (5 words), [error], name reference, [modification time].
+    /// Parses one packed entry: length, returned set (5 words), [error], name reference, [object type],
+    /// [modification time].
     private static func parseChild(_ entry: UnsafeRawBufferPointer) -> DirectoryChild? {
         let returned = entry.loadUnaligned(fromByteOffset: 4, as: UInt32.self)
         var offset = 24
@@ -175,12 +178,18 @@ enum GateSystem {
         let name = Array(entry[nameStart..<(nameStart + nameLength - 1)])
 
         var modified: Date?
+        var isDirectory: Bool?
         let failed = returned & attrgroup_t(ATTR_CMN_ERROR) != 0
+        if !failed, returned & attrgroup_t(ATTR_CMN_OBJTYPE) != 0, offset + 4 <= entry.count {
+            let type = entry.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
+            isDirectory = type == UInt32(VDIR.rawValue)
+            offset += 4
+        }
         if !failed, returned & attrgroup_t(ATTR_CMN_MODTIME) != 0, offset + 16 <= entry.count {
             let seconds = entry.loadUnaligned(fromByteOffset: offset, as: Int64.self)
             let nanos = entry.loadUnaligned(fromByteOffset: offset + 8, as: Int64.self)
             modified = Date(timeIntervalSince1970: TimeInterval(seconds) + TimeInterval(nanos) * 1e-9)
         }
-        return DirectoryChild(name: name, modified: modified)
+        return DirectoryChild(name: name, modified: modified, isDirectory: isDirectory)
     }
 }

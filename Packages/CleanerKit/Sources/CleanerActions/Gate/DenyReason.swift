@@ -37,6 +37,12 @@ public enum DenyReason: Sendable, Codable, Hashable {
     case openFiles
     /// Whether a process has a file open inside the item could not be determined.
     case openFilesUnknown
+    /// A file inside the item was changed after it was downloaded, so it may be the only copy of an edit.
+    case editedAfterDownload
+    /// The folder is tracked by git, so removing it would change the user's working tree.
+    case trackedByGit
+    /// The item is not an Apple-signed macOS installer, so it is kept.
+    case notAppleInstaller
     /// A system call or probe failed, so the item is kept. Holds technical detail without paths.
     case probeFailed(String)
 
@@ -60,6 +66,9 @@ public enum DenyReason: Sendable, Codable, Hashable {
         case .ownerUnknown: "Could not tell whether its app is open"
         case .openFiles: "In use by a running app"
         case .openFilesUnknown: "Could not check whether it is in use"
+        case .editedAfterDownload: "A file in it was changed after it was downloaded"
+        case .trackedByGit: "Tracked by git, so it was left alone"
+        case .notAppleInstaller: "Not an Apple-signed macOS installer"
         case .probeFailed: "A safety check failed, so it was kept"
         }
     }
@@ -114,6 +123,9 @@ public enum DenyReason: Sendable, Codable, Hashable {
         case "ownerUnknown": self = .ownerUnknown
         case "openFiles": self = .openFiles
         case "openFilesUnknown": self = .openFilesUnknown
+        case "editedAfterDownload": self = .editedAfterDownload
+        case "trackedByGit": self = .trackedByGit
+        case "notAppleInstaller": self = .notAppleInstaller
         case "probeFailed": self = .probeFailed(detail ?? "")
         default:
             throw DecodingError.dataCorruptedError(
@@ -142,6 +154,9 @@ public enum DenyReason: Sendable, Codable, Hashable {
         case .ownerUnknown: ("ownerUnknown", nil)
         case .openFiles: ("openFiles", nil)
         case .openFilesUnknown: ("openFilesUnknown", nil)
+        case .editedAfterDownload: ("editedAfterDownload", nil)
+        case .trackedByGit: ("trackedByGit", nil)
+        case .notAppleInstaller: ("notAppleInstaller", nil)
         case .probeFailed(let detail): ("probeFailed", detail)
         }
         try container.encode(kind, forKey: .kind)
@@ -185,8 +200,22 @@ extension ProtectedReason {
 
 /// The gate's decision for one item.
 public enum Verdict: Sendable, Equatable {
-    /// Every check passed. The caller may act on the item now.
-    case allow
+    /// Every check passed. The caller may act on the item now, and only on the URL given here:
+    /// the item's real parent folder plus its own name, as the gate checked it. The caller must
+    /// read the item's `(fsid, fileID)` again right before acting (`safety.md` rule 6).
+    case allow(URL)
     /// A check failed. The item is kept, for this reason.
     case deny(DenyReason)
+
+    /// Whether the verdict is `.allow`.
+    public var isAllowed: Bool {
+        if case .allow = self { return true }
+        return false
+    }
+
+    /// The URL to act on when allowed.
+    public var verifiedURL: URL? {
+        if case .allow(let url) = self { return url }
+        return nil
+    }
 }

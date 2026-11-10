@@ -46,10 +46,16 @@ public enum LeftoverMatcher {
             for entry in entries {
                 guard var candidate = subject.candidate(for: entry, in: place, inventoryComplete: inventory.isComplete)
                 else { continue }
-                if place.scope == .user, entry.isDirectory,
-                    !subject.keepsAfterChildCheck(candidate, children: childNames(place, entry.name))
-                {
-                    continue
+                if place.scope == .user, entry.isDirectory {
+                    let children = childNames(place, entry.name)
+                    guard subject.keepsAfterChildCheck(candidate, children: children) else { continue }
+                    // A folder that may hold something nobody can rebuild is offered but not selected.
+                    if candidate.tier == .safe,
+                        let warning = warning(children: children, entry: entry)
+                    {
+                        candidate.tier = .review
+                        candidate.evidence = .withWarning(warning, candidate.evidence)
+                    }
                 }
                 if place.scope == .system { candidate.tier = .info }
                 candidates.append(candidate)
@@ -59,6 +65,44 @@ public enum LeftoverMatcher {
             ? nil
             : "The list of installed apps could not be read in full, so files matched only by name were left out."
         return LeftoverMatches(candidates: candidates, notice: notice)
+    }
+
+    /// Folders larger than this are `.review`, however they are named (1 GB, decimal like Finder).
+    public static let largeFolderBytes: Int64 = 1_000_000_000
+
+    /// Whether a file or folder name is a virtual machine or a disk image: `Docker.raw`, `data.img`, or
+    /// an extension of `utm`, `pvm`, `vmwarevm`, `sparsebundle` or `dmg` (compared without regard to case).
+    /// A `.dmg` counts only when it is larger than ``largeFolderBytes``; with no size it counts.
+    ///
+    /// - Parameters:
+    ///   - name: The last path component.
+    ///   - allocatedBytes: Its size, when known.
+    public static func isVirtualMachineOrDiskImage(name: String, allocatedBytes: Int64? = nil) -> Bool {
+        let folded = BundleIDText.fold(name)
+        if folded == "docker.raw" || folded == "data.img" { return true }
+        let ext = (folded as NSString).pathExtension
+        switch ext {
+        case "utm", "pvm", "vmwarevm", "sparsebundle": return true
+        case "dmg": return allocatedBytes.map { $0 > largeFolderBytes } ?? true
+        default: return false
+        }
+    }
+
+    /// Why a matched folder must be looked at before it is removed, or nil when nothing says so.
+    ///
+    /// Judged from the names directly inside it (`children`) and from what the caller measured
+    /// (`entry.contents`). Names are checked first, then documents, size and unreadability. A folder
+    /// that nobody measured shows only what its direct children's names give away.
+    private static func warning(children: [String]?, entry: LeftoverEntry) -> LeftoverWarning? {
+        if children?.contains(where: { isVirtualMachineOrDiskImage(name: $0) }) == true
+            || entry.contents?.hasDiskImages == true
+        {
+            return .virtualMachinesOrDiskImages
+        }
+        if entry.contents?.hasDocuments == true { return .documents }
+        if let bytes = entry.contents?.allocatedBytes, bytes > largeFolderBytes { return .large }
+        if children == nil { return .unreadable }
+        return nil
     }
 
     /// Whether a launch job's program lies strictly inside the app bundle. Relative paths, `.` and
