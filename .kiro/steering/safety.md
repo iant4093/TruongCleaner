@@ -52,9 +52,11 @@ if the rule is removed. Reviews reject any change that weakens one.
 16. **Info rows never delete.** A rule with tier Info has no action.
 16a. **Self-update exception.** `CleanerActions/Update/` may rename the running
     TruongCleaner bundle, move a verified new bundle into its place, and later move
-    old `.TruongCleaner-old-*.app` bundles (bundle ID checked) to the Trash. These
-    paths touch only TruongCleaner's own bundle and do not go through `SafetyGate`
-    (approved 2026-11-09, task 8.2).
+    old `.TruongCleaner-old-*.app` bundles (bundle ID checked) to the Trash. It may
+    also move its own stale `TruongCleanerUpdate-<uuid>` download folders in the
+    temporary directory (real directories, owned by the user, older than a minimum
+    age) to the Trash. These paths touch only TruongCleaner's own files and do not
+    go through `SafetyGate` (approved 2026-11-09, task 8.2; temp folders added in 9.3).
 
 ## For agents working in this repo
 
