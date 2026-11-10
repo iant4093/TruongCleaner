@@ -137,6 +137,13 @@ final class UpdateChecker {
     @ObservationIgnored private let runningVersion: String?
     @ObservationIgnored private let installService = UpdateInstallService()
 
+    /// Whether a clean, put-back, uninstall, empty-trash or owner command is running. An update
+    /// restarts the app, which would cut that work off, so Install Update waits. `AppModel` sets it.
+    @ObservationIgnored var isBusy: @MainActor () -> Bool = { false }
+
+    /// Shown when Install Update is blocked, and when an update stops because work started meanwhile.
+    static let busyMessage = "Wait for the clean to finish, then install the update."
+
     init(
         settings: SettingsStore,
         defaults: UserDefaults = .standard,
@@ -184,6 +191,7 @@ final class UpdateChecker {
     var installBlocker: String? {
         guard let release = latest else { return "There is no newer build." }
         guard release.assets != nil else { return "This release has no update file the app can install." }
+        if isBusy() { return Self.busyMessage }
         guard UpdateIdentity.current() != nil else { return "This copy of TruongCleaner cannot read its own version." }
         switch locationBlocker {
         case nil: return nil
@@ -265,8 +273,14 @@ final class UpdateChecker {
                 Task { @MainActor in self?.apply(stage) }
             }
             if Task.isCancelled {
-                service.discard(prepared)
+                await service.discard(prepared)
                 throw UpdateError.cancelled
+            }
+            // Work may have started during the download. Check again right before the swap.
+            if isBusy() {
+                await service.discard(prepared)
+                installState = .failed(Self.busyMessage)
+                return
             }
             installState = .ready
             installState = .installing
@@ -292,6 +306,12 @@ final class UpdateChecker {
 
     /// Opens the new copy as a second instance, then quits this one.
     private func relaunch(at url: URL) async {
+        // The swap is done. If work started since, do not cut it off: the user restarts later.
+        if isBusy() {
+            installState = .failed(
+                "TruongCleaner was updated. Quit it and open it again when the current clean has finished.")
+            return
+        }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
         do {

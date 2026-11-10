@@ -116,6 +116,7 @@ final class TrashModel {
     /// Which confirmation dialog is open.
     enum Confirmation {
         case freeSpace
+        case freeSpaceSecond
         case emptyFirst
         case emptySecond
     }
