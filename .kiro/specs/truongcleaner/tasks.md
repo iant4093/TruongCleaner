@@ -95,7 +95,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 7.1 | B | a | Onboarding sheet + FDA flow | PERM-02 |
 | [x] | 7.2 | B | b | Accessibility pass: labels, keyboard, Reduce Transparency, Increase Contrast, Reduce Motion | UI-04, UI-05, UI-07 |
 | [x] | 7.3 | B | c | App icon (Icon Composer), screenshots in `docs/screenshots/` (webp) | — |
-| [ ] | 7.4 | O | | Final README, release notes, v1.0.0 | — |
+| [x] | 7.4 | O | | Final README, release notes, v1.0.0 (tag `v1.0.0` on `1afcd23`, release build-35, Build 1035, 2026-11-10) | — |
 | [x] | 7.5 | I | | Full hand test on Ian's Mac ✋ | — |
 
 ## Wave 8: Feedback from Ian's hand checks (2026-11-09)
