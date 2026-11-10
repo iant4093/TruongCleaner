@@ -90,11 +90,11 @@ struct RuleRoots: Sendable {
 /// Paths are compared by folded components (NFC, lowercase), because the volume does not tell
 /// `Caches` from `caches` and a catalog name need not match the case on disk.
 struct RootOverlap: Sendable {
-    /// For a folded path that is a root of some rule, or lies above one: the indices of those rules.
-    private var owners: [String: Set<Int>] = [:]
+    /// For a folded path that is a root of some rule, or lies above one: the IDs of those rules.
+    private var owners: [String: Set<String>] = [:]
 
     /// - Parameters:
-    ///   - rules: The rules of the request.
+    ///   - rules: The rules to consider. A scan passes the whole catalog plus its own rules, enabled or not.
     ///   - roots: The resolved roots of each rule, in the same order.
     init(rules: [Rule], roots: [RuleRoots]) {
         for (index, rule) in rules.enumerated() where RuleRoots.offersItems(rule) {
@@ -102,18 +102,18 @@ struct RootOverlap: Sendable {
                 var key = ""
                 for part in Self.foldedComponents(root) {
                     key += "/" + part
-                    owners[key, default: []].insert(index)
+                    owners[key, default: []].insert(rule.id)
                 }
             }
         }
     }
 
-    /// True when `url` equals or contains a root of a rule other than `rule`.
-    func isCovered(_ url: URL, byRuleOtherThan rule: Int) -> Bool {
+    /// True when `url` equals or contains a root of a rule other than `ruleID`.
+    func isCovered(_ url: URL, byRuleOtherThan ruleID: String) -> Bool {
         guard !owners.isEmpty else { return false }
         let key = "/" + Self.foldedComponents(url).joined(separator: "/")
         guard let found = owners[key] else { return false }
-        return found.contains { $0 != rule }
+        return found.contains { $0 != ruleID }
     }
 
     private static func foldedComponents(_ url: URL) -> [String] {

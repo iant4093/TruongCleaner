@@ -20,8 +20,8 @@ struct LibrarySplit: Sendable {
     var denied: [StorageCategory: Int] = [:]
 }
 
-/// One category measurement in progress. Walks run one after another; each uses up to
-/// `min(8, activeProcessorCount)` threads, so at most that many walker threads exist at any time.
+/// One category measurement in progress. Walks run one after another on the process-wide thread budget
+/// (`WorkerBudget.shared`, `min(6, activeProcessorCount)`), together with every other scan in the process.
 struct CategoryRun {
     private static let log = Logger(subsystem: "com.iant4093.TruongCleaner", category: "categories")
 
@@ -34,7 +34,7 @@ struct CategoryRun {
     private var measuredTotal: Int64 = 0
 
     init(progress: (@Sendable (CategoryProgress) -> Void)?) {
-        self.workers = max(1, min(8, ProcessInfo.processInfo.activeProcessorCount))
+        self.workers = WorkerBudget.processWideTotal
         self.progress = progress
     }
 
@@ -75,6 +75,7 @@ struct CategoryRun {
         for name in listing.deniedNames {
             needsAccess[CategoryPlan.homeCategory(forFolder: name) ?? .otherHome, default: 0] += 1
         }
+        let homeDevice = ChildListing.identity(of: home)?.device
 
         for child in listing.entries {
             guard !stopped() else { return }
@@ -82,6 +83,8 @@ struct CategoryRun {
                 count(child.allocatedBytes, in: .otherHome)
                 continue
             }
+            // A volume mounted inside the home folder (a disk image, a share) is not Data-volume space.
+            if let homeDevice, child.device != homeDevice { continue }
             if child.name == "Library" {
                 await measureLibrary(child)
             } else {
@@ -102,10 +105,13 @@ struct CategoryRun {
         if listing.unreadable > 0 { partial = true }
         needsAccess[.otherUsers, default: 0] += listing.deniedNames.count
         let homeIdentity = ChildListing.identity(of: home)
+        let usersDevice = ChildListing.identity(of: usersRoot)?.device
 
         for child in listing.entries {
             guard !stopped() else { return }
             if let homeIdentity, child.device == homeIdentity.device, child.inode == homeIdentity.inode { continue }
+            // A volume mounted under /Users is not Data-volume space, so it stays out of "Other users".
+            if let usersDevice, child.device != usersDevice { continue }
             if child.isDirectory {
                 await measureFolder(child.url, as: .otherUsers)
             } else {
@@ -122,8 +128,7 @@ struct CategoryRun {
             let split = Self.splitLibrary(result)
             for (category, value) in split.bytes { count(value, private: split.privateBytes[category] ?? value, in: category) }
             for (category, value) in split.denied { needsAccess[category, default: 0] += value }
-            if result.partial { partial = true }
-            if result.otherErrors > 0 { Self.log.debug("library walk had \(result.otherErrors) other errors") }
+            noteIncomplete(result, what: "library walk")
         case .denied:
             needsAccess[.libraryOther, default: 0] += 1
         case .absent:
@@ -180,8 +185,14 @@ struct CategoryRun {
         let root = result.nodes.first
         count(root?.allocatedBytes ?? 0, private: root?.privateBytes, in: category)
         if result.deniedCount > 0 { needsAccess[category, default: 0] += result.deniedCount }
-        if result.partial { partial = true }
-        if result.otherErrors > 0 { Self.log.debug("walk had \(result.otherErrors) other errors") }
+        noteIncomplete(result, what: "walk")
+    }
+
+    /// A walk that stopped early, or dropped entries for a reason other than permission, undercounts:
+    /// the category total is "at least" what was found, so the whole measurement is partial.
+    private mutating func noteIncomplete(_ result: WalkResult, what: String) {
+        if result.otherErrors > 0 { Self.log.debug("\(what) had \(result.otherErrors) other errors") }
+        if result.isIncomplete { partial = true }
     }
 
     private mutating func count(_ allocated: Int64, private privateSize: Int64? = nil, in category: StorageCategory) {
@@ -199,7 +210,7 @@ struct CategoryRun {
             }
         }
         do {
-            let result = try await BulkWalker.walk(
+            let result = try await SharedBudgetWalk.walk(
                 url, options: WalkOptions(maxWorkers: workers, totalsDepth: totalsDepth), progress: callback)
             return .walked(result)
         } catch let error as ScanError {

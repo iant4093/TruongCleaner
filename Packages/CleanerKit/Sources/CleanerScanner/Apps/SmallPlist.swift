@@ -26,7 +26,9 @@ enum SmallPlist {
             return Array(UnsafeBufferPointer(start: pointer, count: strlen(pointer) + 1))
         }
         guard let path else { return .failure(.unreadable) }
-        let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        // O_NONBLOCK: opening a FIFO for reading would otherwise wait for a writer, forever. The type is
+        // checked after the open, and the flag is cleared again before the first read.
+        let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
         guard descriptor >= 0 else {
             switch errno {
             case ENOENT, ENOTDIR: return .failure(.missing)
@@ -40,6 +42,8 @@ enum SmallPlist {
         guard fstat(descriptor, &info) == 0 else { return .failure(.unreadable) }
         guard info.st_mode & S_IFMT == S_IFREG else { return .failure(.notAFile) }
         guard info.st_size >= 0, info.st_size <= limit else { return .failure(.tooLarge) }
+        let status = fcntl(descriptor, F_GETFL)
+        guard status >= 0, fcntl(descriptor, F_SETFL, status & ~O_NONBLOCK) == 0 else { return .failure(.unreadable) }
 
         var bytes = [UInt8](repeating: 0, count: Int(info.st_size))
         var filled = 0

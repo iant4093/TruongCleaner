@@ -21,8 +21,10 @@ public actor ScanEngine {
     /// - Parameter request: Rules, environment and parallelism.
     public func scan(_ request: ScanRequest) -> AsyncStream<ScanEvent> {
         let (stream, continuation) = AsyncStream.makeStream(of: ScanEvent.self, bufferingPolicy: .unbounded)
+        // Read here: a detached task does not inherit task-locals.
+        let budget = WorkerBudget.current
         let task = Task.detached(priority: .userInitiated) {
-            let report = await ScanRun.execute(request) { continuation.yield($0) }
+            let report = await ScanRun.execute(request, sharedBudget: budget) { continuation.yield($0) }
             continuation.yield(.finished(report))
             continuation.finish()
         }

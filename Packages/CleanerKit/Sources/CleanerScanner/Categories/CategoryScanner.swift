@@ -13,7 +13,7 @@ import Foundation
 public enum CategoryScanner {
     /// Measures the Data volume's categories.
     ///
-    /// Runs off the main actor on up to `min(8, activeProcessorCount)` walker threads. When the calling task
+    /// Runs off the main actor on the process-wide walker budget of `min(6, activeProcessorCount)` threads. When the calling task
     /// is cancelled the measurement stops within about 100 ms and returns what it has, with `partial == true`.
     ///
     /// - Parameters:

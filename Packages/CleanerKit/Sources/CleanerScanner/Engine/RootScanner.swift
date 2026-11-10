@@ -120,7 +120,9 @@ enum RootScanner {
         let rootTotals = result.nodes.first
         progress.finish(slot: slot, files: result.files, bytes: rootTotals?.allocatedBytes ?? 0)
         outcome.needsAccess = Array(result.deniedDirectories.prefix(accessCap))
-        outcome.partial = result.partial || Task.isCancelled
+        // Entries dropped for a reason other than permission (EIO, EMFILE, a failed listing) make the totals
+        // too low and the dates incomplete, so the result is partial and no date is trusted.
+        outcome.partial = result.isIncomplete || Task.isCancelled
 
         if case .measure = shape {
             outcome.measuredBytes = rootTotals?.allocatedBytes ?? 0

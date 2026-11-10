@@ -173,22 +173,24 @@ enum FolderProbe {
     /// `lstat` of `url`: never follows a final symbolic link.
     static func kind(of url: URL) -> Kind {
         var info = stat()
-        let result = url.withUnsafeFileSystemRepresentation { path -> Int32 in
-            guard let path else { return -1 }
-            return lstat(path, &info)
+        // errno is saved inside the closure, right after the call, before anything else can change it.
+        let code = url.withUnsafeFileSystemRepresentation { path -> Int32 in
+            guard let path else { return EINVAL }
+            return lstat(path, &info) == 0 ? 0 : errno
         }
-        if result != 0 { return .failure(errno) }
+        if code != 0 { return .failure(code) }
         return info.st_mode & S_IFMT == S_IFDIR ? .folder : .other
     }
 
     /// Names of the real folders directly inside `url`, sorted. Symbolic links and files are left out.
     /// `url` itself must not be a symbolic link.
     static func childFolders(of url: URL) -> Result<[String], Failure> {
-        let fd = url.withUnsafeFileSystemRepresentation { path -> Int32 in
-            guard let path else { return -1 }
-            return open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        let (fd, openCode) = url.withUnsafeFileSystemRepresentation { path -> (Int32, Int32) in
+            guard let path else { return (-1, EINVAL) }
+            let descriptor = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            return (descriptor, descriptor < 0 ? errno : 0)
         }
-        guard fd >= 0 else { return .failure(failure(for: errno)) }
+        guard fd >= 0 else { return .failure(failure(for: openCode)) }
         guard let directory = fdopendir(fd) else {
             let code = errno
             close(fd)
@@ -217,13 +219,19 @@ enum FolderProbe {
 
     /// Fully resolved real path of `url`. Only for folders the caller supplied.
     static func realPath(of url: URL) -> Result<URL, Failure> {
-        let resolved = url.withUnsafeFileSystemRepresentation { path -> String? in
-            guard let path, let buffer = realpath(path, nil) else { return nil }
+        // errno is saved inside the closure, right after `realpath`. A path that is not valid UTF-8 is its own
+        // case (`.other`): it is neither missing nor denied.
+        let outcome = url.withUnsafeFileSystemRepresentation { path -> Result<String, Failure> in
+            guard let path else { return .failure(.other) }
+            guard let buffer = realpath(path, nil) else { return .failure(failure(for: errno)) }
             defer { free(buffer) }
-            return String(validatingCString: buffer)
+            guard let text = String(validatingCString: buffer) else { return .failure(.other) }
+            return .success(text)
         }
-        guard let resolved else { return .failure(failure(for: errno)) }
-        return .success(URL(filePath: resolved, directoryHint: .isDirectory))
+        switch outcome {
+        case .success(let resolved): return .success(URL(filePath: resolved, directoryHint: .isDirectory))
+        case .failure(let failure): return .failure(failure)
+        }
     }
 
     private static func failure(for code: Int32) -> Failure {
