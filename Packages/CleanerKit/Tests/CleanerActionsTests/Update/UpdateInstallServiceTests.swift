@@ -29,10 +29,12 @@ struct UpdateInstallServiceTests {
         let zipBytes = try Data(contentsOf: zip)
         let line = FixtureAssets.checksumLine(for: tamperChecksum ? Data("other".utf8) : zipBytes)
 
-        let fetcher = FakeFetcher(archive: zipBytes, checksums: Data(line.utf8))
+        let signer = FixtureSigner()
+        let sums = Data(line.utf8)
+        let fetcher = FakeFetcher(archive: zipBytes, checksums: sums, signature: try signer.signatureFile(for: sums))
         let applications = tree.url(for: "Applications")
         let service = UpdateInstallService(
-            downloader: UpdateDownloader(fetcher: fetcher, workRoot: tree.url(for: "tmp")),
+            downloader: UpdateDownloader(fetcher: fetcher, workRoot: tree.url(for: "tmp"), trust: signer.trust),
             installer: UpdateInstaller(allowedParents: [applications]))
         return Harness(service: service, running: running, applications: applications, tmp: tree.url(for: "tmp"))
     }

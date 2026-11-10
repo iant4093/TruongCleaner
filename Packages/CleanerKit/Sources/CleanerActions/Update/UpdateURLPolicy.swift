@@ -47,19 +47,51 @@ public enum UpdateURLPolicy {
     }
 }
 
-/// The two files an update needs, both on the allow-list.
+/// The files an update needs, all on the allow-list.
 public struct UpdateAssets: Sendable, Equatable {
+    /// Release asset name of the checksum list.
+    public static let checksumsName = "SHA256SUMS"
+    /// Release asset name of the detached Ed25519 signature over ``checksumsName``.
+    public static let signatureName = "SHA256SUMS.sig"
+
     /// Address of `TruongCleaner.zip`.
     public let archive: URL
     /// Address of `SHA256SUMS`.
     public let checksums: URL
+    /// Address of `SHA256SUMS.sig`, or `nil` when the release has none (it cannot be installed).
+    public let signature: URL?
 
-    /// Returns `nil` unless both addresses pass ``UpdateURLPolicy/isAllowedAssetURL(_:)``.
-    public init?(archive: URL, checksums: URL) {
+    /// Returns `nil` unless every given address passes ``UpdateURLPolicy/isAllowedAssetURL(_:)``.
+    public init?(archive: URL, checksums: URL, signature: URL? = nil) {
         guard UpdateURLPolicy.isAllowedAssetURL(archive), UpdateURLPolicy.isAllowedAssetURL(checksums) else {
             return nil
         }
+        if let signature, !UpdateURLPolicy.isAllowedAssetURL(signature) { return nil }
         self.archive = archive
         self.checksums = checksums
+        self.signature = signature
+    }
+
+    /// Picks the update files out of a release's asset list (`name` and download address).
+    ///
+    /// The ZIP and `SHA256SUMS` must each appear exactly once. `SHA256SUMS.sig` must appear exactly
+    /// once to count; zero or several mean "no signature". Returns `nil` when a needed address is
+    /// missing, unreadable or not on the allow-list, including a present signature address.
+    public static func select(from assets: [(name: String, address: String)]) -> UpdateAssets? {
+        func addresses(of name: String) -> [String] {
+            assets.filter { $0.name == name }.map(\.address)
+        }
+        let archives = addresses(of: UpdateDownloader.archiveName)
+        let sums = addresses(of: checksumsName)
+        let signatures = addresses(of: signatureName)
+        guard archives.count == 1, sums.count == 1,
+              let archive = URL(string: archives[0]), let checksums = URL(string: sums[0])
+        else { return nil }
+        guard signatures.count == 1 else {
+            return UpdateAssets(archive: archive, checksums: checksums)
+        }
+        guard let signature = URL(string: signatures[0]) else { return nil }
+        return UpdateAssets(archive: archive, checksums: checksums, signature: signature)
     }
 }
+

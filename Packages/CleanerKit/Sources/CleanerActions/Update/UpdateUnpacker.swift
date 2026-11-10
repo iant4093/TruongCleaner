@@ -51,12 +51,14 @@ public struct UpdateUnpacker: Sendable {
         return try Self.checkContents(of: download.folder, extractFolder: target)
     }
 
-    /// The update folder must hold only the ZIP, `SHA256SUMS` and `extract`, and `extract` must hold
-    /// one real `TruongCleaner.app` directory. Anything else, such as a path that escaped upward,
-    /// a second top-level item or a link, is refused.
+    /// The update folder must hold only the ZIP, `SHA256SUMS`, `SHA256SUMS.sig` and `extract`, and
+    /// `extract` must hold one real `TruongCleaner.app` directory. Anything else, such as a path
+    /// that escaped upward, a second top-level item or a link, is refused.
     static func checkContents(of folder: URL, extractFolder: URL) throws -> URL {
         let fileManager = FileManager.default
-        let expectedInFolder: Set<String> = [UpdateDownloader.archiveName, "SHA256SUMS", extractFolderName]
+        let expectedInFolder: Set<String> = [
+            UpdateDownloader.archiveName, "SHA256SUMS", "SHA256SUMS.sig", extractFolderName,
+        ]
         guard let outer = try? fileManager.contentsOfDirectory(atPath: folder.path(percentEncoded: false)),
               Set(outer) == expectedInFolder
         else { throw UpdateError.unexpectedArchiveContents }

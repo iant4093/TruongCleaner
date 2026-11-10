@@ -95,7 +95,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 7.1 | B | a | Onboarding sheet + FDA flow | PERM-02 |
 | [x] | 7.2 | B | b | Accessibility pass: labels, keyboard, Reduce Transparency, Increase Contrast, Reduce Motion | UI-04, UI-05, UI-07 |
 | [x] | 7.3 | B | c | App icon (Icon Composer), screenshots in `docs/screenshots/` (webp) | — |
-| [ ] | 7.4 | O | | Final README, release notes, v1.0.0 | — |
+| [x] | 7.4 | O | | Final README, release notes, v1.0.0 (tag `v1.0.0` on `1afcd23`, release build-35, Build 1035, 2026-11-10) | — |
 | [x] | 7.5 | I | | Full hand test on Ian's Mac ✋ | — |
 
 ## Wave 8: Feedback from Ian's hand checks (2026-11-09)
@@ -118,4 +118,5 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 9.3 | B | c | App, updater, installer fixes; version 1.0.0 |
 | [x] | 9.4 | B | | Follow-ups: leftover folders Review after measuring (documents, disk images, >1 GB, partial); gate age walk on the shared budget |
 | [x] | 9.5 | O | | CI (attest job, self-test, versioned release title and notes), safety hook, README, PLAN, RULE_CATALOG, UNINSTALLER, safety.md 16a, tasks |
-| [ ] | 9.6 | Ian | | Decide: sign `SHA256SUMS` with Ed25519 for in-app updates (safety review #3) |
+| [~] | 9.6 | B | | Signed update checksums: Ed25519 `SHA256SUMS.sig`, key in Ian's Keychain, app fails closed (safety review #3; Ian approved 2026-11-10) |
+| [ ] | 9.7 | Ian | | Run `swift scripts/release-key.swift generate`, send the public key; sign each release with `bash scripts/sign-release.sh build-N` |

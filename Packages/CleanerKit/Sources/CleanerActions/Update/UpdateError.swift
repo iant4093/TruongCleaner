@@ -16,6 +16,10 @@ public enum UpdateError: Error, Sendable, Equatable, LocalizedError {
     case checksumMissing
     /// The ZIP does not match its line in `SHA256SUMS`.
     case checksumMismatch
+    /// The release has no `SHA256SUMS.sig`, so nothing was downloaded.
+    case unsigned
+    /// `SHA256SUMS.sig` is malformed or not valid for any trusted key.
+    case badSignature
     /// `ditto` could not unpack the ZIP. Holds a short reason.
     case unpackFailed(String)
     /// The ZIP holds something other than exactly one `TruongCleaner.app`.
@@ -54,6 +58,10 @@ public enum UpdateError: Error, Sendable, Equatable, LocalizedError {
             "The release has no usable checksum for the update. Nothing was installed."
         case .checksumMismatch:
             "The download does not match its checksum. Nothing was installed."
+        case .unsigned:
+            "This update is not signed yet, so it was not installed. Try again later, or download it from the release page."
+        case .badSignature:
+            "The update's signature is not valid. Nothing was installed."
         case .unpackFailed(let reason):
             "The update could not be unpacked (\(reason))."
         case .unexpectedArchiveContents:

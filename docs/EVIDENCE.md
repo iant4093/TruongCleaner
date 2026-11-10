@@ -395,3 +395,16 @@ the CI way (`CI=true TC_TIMING_SLACK=10 TC_TEST_PARALLEL=0`), 889 tests in 66
 suites (285 + 250 + 354); `build.sh all` PASS, Release 4.9 MB; `package.sh` PASS
 with `CFBundleShortVersionString` 1.0.0. Screenshots of Overview, Smart Clean,
 System Data and Applications show no regressions.
+
+### Task 9.6: signed update checksums (2026-11-10)
+
+Closes safety review #3 (D21). The downloader refuses an update with no
+`SHA256SUMS.sig` before fetching anything. It checks the Ed25519 signature over the
+exact `SHA256SUMS` bytes before it reads a digest or fetches the ZIP. An empty
+trusted-key list refuses every update. The `.sig` parser accepts only one canonical
+base64 line of 64 bytes. `scripts/sign-release.sh` signs only a ZIP that matches
+`SHA256SUMS` and has a valid CI build attestation (orchestrator addition). The
+Keychain paths in `scripts/release-key.swift` type-check, but they were not run,
+because they write to Ian's Keychain. Orchestrator verification on merged `main`:
+lint 0 violations in 186 files; deletion-site check and self-test PASS; package
+tests PASS the CI way, 915 tests (285 + 250 + 380); `build.sh all` PASS.

@@ -12,8 +12,9 @@ nonisolated struct ReleaseInfo: Equatable, Sendable {
     let name: String
     /// Page of the release on github.com.
     let pageURL: URL
-    /// The two files an in-app update downloads, or `nil` when the release lacks them or their
-    /// addresses are not on the allow-list (`UpdateURLPolicy`).
+    /// The files an in-app update downloads, or `nil` when the release lacks the ZIP or the
+    /// checksum list, or an address is not on the allow-list (`UpdateURLPolicy`). The signature
+    /// inside may be `nil`: the release is then shown but cannot be installed here.
     let assets: UpdateAssets?
 
     /// Offset between a tag number and `CFBundleVersion` (CI adds it to the run number).
@@ -52,17 +53,10 @@ nonisolated enum ReleaseParser {
         return ReleaseInfo(tagNumber: number, name: name, pageURL: url, assets: updateAssets(in: payload.assets ?? []))
     }
 
-    /// `TruongCleaner.zip` and `SHA256SUMS`, if each appears exactly once with an allowed address.
+    /// `TruongCleaner.zip` and `SHA256SUMS` (each exactly once, with an allowed address) and the
+    /// optional `SHA256SUMS.sig`. The rules live in `UpdateAssets.select(from:)`.
     private static func updateAssets(in assets: [Asset]) -> UpdateAssets? {
-        func address(of name: String) -> URL? {
-            let matches = assets.filter { $0.name == name }
-            guard matches.count == 1 else { return nil }
-            return URL(string: matches[0].browser_download_url)
-        }
-        guard let archive = address(of: UpdateDownloader.archiveName), let sums = address(of: "SHA256SUMS") else {
-            return nil
-        }
-        return UpdateAssets(archive: archive, checksums: sums)
+        UpdateAssets.select(from: assets.map { (name: $0.name, address: $0.browser_download_url) })
     }
 
     /// True when the release is newer than the running `CFBundleVersion`. An unreadable running
@@ -186,11 +180,22 @@ final class UpdateChecker {
         return "Version \(version) (build \(build))"
     }
 
+    /// Shown when the newest release has no signature file yet.
+    static let unsignedMessage = "Not signed yet. Check again later."
+
+    /// True when the newest release has its update files but no `SHA256SUMS.sig`. The app only
+    /// installs signed updates, so Install Update is hidden until the signature is published.
+    var latestIsUnsigned: Bool {
+        guard let assets = latest?.assets else { return false }
+        return assets.signature == nil
+    }
+
     /// Why the update cannot be installed from inside the app, or `nil` when it can.
     /// Plain words for the Settings page and the banner.
     var installBlocker: String? {
         guard let release = latest else { return "There is no newer build." }
         guard release.assets != nil else { return "This release has no update file the app can install." }
+        if latestIsUnsigned { return Self.unsignedMessage }
         if isBusy() { return Self.busyMessage }
         guard UpdateIdentity.current() != nil else { return "This copy of TruongCleaner cannot read its own version." }
         switch locationBlocker {
