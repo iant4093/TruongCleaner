@@ -68,15 +68,20 @@ enum ScanRun {
     ///
     /// When the calling task is cancelled the walks stop within about 100 ms and the report is partial.
     @concurrent
+    ///
+    /// - Parameter sharedBudget: The thread budget to run on. `ScanEngine` passes the process-wide one, so a
+    ///   scan and any other walk together stay within it. `nil` gives this scan a budget of its own.
     static func execute(
         _ request: ScanRequest, tuning: Tuning = .standard, cores: Int = ProcessInfo.processInfo.activeProcessorCount,
+        sharedBudget: WorkerBudget? = nil,
         emit: @escaping @Sendable (ScanEvent) -> Void
     ) async -> ScanReport {
         let clock = ContinuousClock()
         let started = clock.now
         let limits = Limits(request, cores: cores)
         let threads = Limits.threadBudget(cores: cores)
-        let budget = tuning.elasticWorkers ? WorkerBudget(total: threads) : nil
+        let budget = tuning.elasticWorkers ? (sharedBudget ?? WorkerBudget(total: threads)) : nil
+        var idle = IdleLanes(budget: budget)
         let context = ScanContext(
             policy: PathPolicy(environment: request.environment, userExclusions: request.userExclusions),
             environment: request.environment,
@@ -110,16 +115,25 @@ enum ScanRun {
                     inFlight += 1
                 }
                 // Walks still to start keep one thread each free; with none waiting, a walk may take them all.
-                budget?.setIdleLanes(plan.hasQueuedUnits ? limits.roots - inFlight : 0)
+                idle.set(plan.hasQueuedUnits ? limits.roots - inFlight : 0)
                 plan.flush()
-                guard inFlight > 0, let (ruleIndex, outcome) = await group.next() else { break }
+                guard inFlight > 0, let (ruleIndex, outcome) = await group.next() else {
+                    // A budget shared with other walks can be full while none of ours runs. Wait for a
+                    // thread instead of ending the scan with roots unwalked.
+                    if inFlight == 0, budget != nil, plan.hasQueuedUnits, !Task.isCancelled {
+                        try? await Task.sleep(for: .milliseconds(10))
+                        continue
+                    }
+                    break
+                }
                 inFlight -= 1
                 // Reserve first, then free the walk's thread, so that nothing else takes it in between.
-                budget?.setIdleLanes(plan.hasQueuedUnits ? limits.roots - inFlight : 0)
+                idle.set(plan.hasQueuedUnits ? limits.roots - inFlight : 0)
                 budget?.endLane()
                 plan.absorb(outcome, forRule: ruleIndex)
             }
         }
+        idle.set(0)
         plan.abandonUnfinished()
         plan.flush()
 
@@ -130,5 +144,23 @@ enum ScanRun {
             duration: started.duration(to: clock.now),
             duplicatesDropped: plan.duplicatesDropped
         )
+    }
+}
+
+/// A scan's share of the idle lanes of a budget it may share with other scans. It only ever changes its own
+/// share, and gives it back with `set(0)`.
+private struct IdleLanes {
+    let budget: WorkerBudget?
+    private var count = 0
+
+    init(budget: WorkerBudget?) {
+        self.budget = budget
+    }
+
+    mutating func set(_ value: Int) {
+        let target = max(0, value)
+        guard target != count else { return }
+        budget?.adjustIdleLanes(by: target - count)
+        count = target
     }
 }

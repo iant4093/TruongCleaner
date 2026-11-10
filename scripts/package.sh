@@ -32,6 +32,15 @@ VERSION="$(read_plist CFBundleShortVersionString)"
 BUILD="$(read_plist CFBundleVersion)"
 BUNDLE_ID="$(read_plist CFBundleIdentifier)"
 
+# CI passes the build number as TRUONGCLEANER_BUILD_NUMBER (1000 + run number). If the override did
+# not reach the build, the release would carry the wrong CFBundleVersion and in-app updates would
+# loop, so stop here.
+[ -n "$VERSION" ] || die "CFBundleShortVersionString is empty in $PLIST"
+[ -n "$BUILD" ] || die "CFBundleVersion is empty in $PLIST"
+if [ -n "${TRUONGCLEANER_BUILD_NUMBER:-}" ] && [ "$BUILD" != "$TRUONGCLEANER_BUILD_NUMBER" ]; then
+  die "CFBundleVersion is '$BUILD' but TRUONGCLEANER_BUILD_NUMBER is '$TRUONGCLEANER_BUILD_NUMBER'"
+fi
+
 echo "== stage =="
 # build/package is ours (inside build/); rebuild it from scratch each time.
 case "$PKG_DIR" in "$ROOT"/build/*) ;; *) die "unexpected package dir $PKG_DIR" ;; esac

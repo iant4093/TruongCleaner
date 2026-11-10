@@ -83,6 +83,12 @@ public struct LargeFileReport: Sendable {
     }
 }
 
+/// An entry together with the volume it was found on.
+private struct VolumeEntry: Hashable {
+    let volume: UInt64
+    let id: EntryID
+}
+
 /// Finds big files that have not been modified for a while. Reads only; never changes anything.
 public enum LargeFileFinder {
     /// The walker keeps this many of the largest files per folder searched, at least.
@@ -124,7 +130,9 @@ public enum LargeFileFinder {
         let options = WalkOptions(totalsDepth: 0, topFilesCount: candidates)
 
         var matches: [LargeFile] = []
-        var seen = Set<EntryID>()
+        // The volume is part of the key: System and Data report the same `ATTR_CMN_FSID`, so two different
+        // files of two search roots can share an `EntryID`.
+        var seen = Set<VolumeEntry>()
         var needsAccess: [URL] = []
         var skippedRoots: [URL] = []
         var firstError: ScanError?
@@ -147,7 +155,10 @@ public enum LargeFileFinder {
             }
             let result: WalkResult
             do {
-                result = try await BulkWalker.walk(root, options: options, progress: forward)
+                result = try await SharedBudgetWalk.walk(root, options: options, progress: forward)
+            } catch is CancellationError {
+                partial = true
+                break
             } catch let error as ScanError {
                 firstError = firstError ?? error
                 if case .accessDenied = error { needsAccess.append(root) } else { skippedRoots.append(root) }
@@ -170,7 +181,7 @@ public enum LargeFileFinder {
                     // Unknown means keep: a file without a readable date is not offered as "old".
                     guard let modified = node.newestModification, modified < cutoff else { continue }
                 }
-                guard seen.insert(node.id).inserted else { continue }
+                guard seen.insert(VolumeEntry(volume: result.volume, id: node.id)).inserted else { continue }
                 matches.append(
                     LargeFile(
                         id: node.id, url: node.url, allocatedBytes: node.allocatedBytes,

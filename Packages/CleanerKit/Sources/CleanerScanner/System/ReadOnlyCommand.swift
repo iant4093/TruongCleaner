@@ -6,6 +6,8 @@ public struct CommandResult: Sendable {
     public let exitCode: Int32?
     /// `true` when the command ran past its timeout and was stopped.
     public let timedOut: Bool
+    /// `true` when the calling task was cancelled and the command was stopped (or never started) because of it.
+    public var cancelled = false
     /// Why the command was refused or could not be launched. `nil` when it ran.
     public let launchError: String?
     /// Everything the command wrote to standard output.
@@ -47,8 +49,8 @@ public struct ReadOnlyCommand: Sendable {
         ],
     ]
 
-    /// `PATH` given to every command.
-    static let searchPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+    /// `PATH` given to every command (tech.md: exactly `PATH=/usr/bin:/bin`).
+    static let searchPath = "/usr/bin:/bin"
 
     /// Prefix of `launchError` when a command was refused before launch.
     static let refusedPrefix = "refused: "
@@ -80,15 +82,16 @@ public struct ReadOnlyCommand: Sendable {
         guard executable.hasPrefix("/") else {
             return refused("executable path must be absolute")
         }
-        let environment = scrubbedEnvironment(parent: ProcessInfo.processInfo.environment)
+        let environment = scrubbedEnvironment()
         let clock = ContinuousClock()
         let started = clock.now
         let outcome = await SupervisedProcess.run(
             executable, arguments, environment: environment, timeout: timeout,
-            terminateGrace: .seconds(2), mergeOutput: false)
+            terminateGrace: .seconds(2), mergeOutput: false, stopOnCancel: true)
         return CommandResult(
             exitCode: outcome.terminationStatus,
             timedOut: outcome.timedOut,
+            cancelled: outcome.cancelled,
             launchError: outcome.launchError,
             stdout: outcome.stdout,
             stderr: outcome.stderr,
@@ -96,17 +99,16 @@ public struct ReadOnlyCommand: Sendable {
         )
     }
 
-    /// The environment every command gets. `DEVELOPER_DIR` is passed only when the parent has it.
-    static func scrubbedEnvironment(parent: [String: String]) -> [String: String] {
-        var environment = [
+    /// The environment every command gets: `PATH`, `HOME` and `LANG`, nothing from the parent process.
+    ///
+    /// `DEVELOPER_DIR` is not passed on. `xcrun` runs the tool it finds under that folder, so an inherited
+    /// value would choose which `simctl` runs. Without it `xcrun` uses the Xcode selected with `xcode-select`.
+    static func scrubbedEnvironment() -> [String: String] {
+        [
             "PATH": searchPath,
             "HOME": NSHomeDirectory(),
             "LANG": "en_US.UTF-8",
         ]
-        if let developerDir = parent["DEVELOPER_DIR"], !developerDir.isEmpty {
-            environment["DEVELOPER_DIR"] = developerDir
-        }
-        return environment
     }
 
     private static func refused(_ reason: String) -> CommandResult {
@@ -122,6 +124,7 @@ extension CommandResult {
     ///
     /// - Parameter tool: Name shown in `toolMissing` errors (for example `"xcrun"`).
     func probeError(tool: String) -> ProbeError? {
+        if cancelled { return .notRun("cancelled") }
         if let launchError {
             return launchError.hasPrefix(ReadOnlyCommand.refusedPrefix)
                 ? .notRun(String(launchError.dropFirst(ReadOnlyCommand.refusedPrefix.count)))

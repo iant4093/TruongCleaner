@@ -78,9 +78,10 @@ enum AppRules {
         explain: "Downloaded song cache (not offline downloads)."
     )
 
-    /// Adobe media cache folders. The catalog names no owner. Premiere's process names carry
-    /// the year (for example `Adobe Premiere Pro 2025`), so these exact names may never match
-    /// a running app; see the report.
+    /// Adobe media cache folders. The apps that share the cache are found by bundle ID prefix
+    /// (a trailing `*`), because their process names and bundle IDs carry the year (for example
+    /// `Adobe Premiere Pro 2025` is `com.adobe.PremierePro.25`). `SafetyGate` answers a prefix from
+    /// the app bundles of the running processes.
     static let appsAdobeMediaCache = Rule(
         id: "apps.adobeMediaCache",
         category: .apps,
@@ -91,10 +92,11 @@ enum AppRules {
         ],
         match: .children,
         guards: Guards(owners: [
-            .processName("Adobe Premiere Pro"),
-            .processName("Adobe After Effects"),
-            .processName("Adobe Media Encoder"),
-            .processName("Adobe Audition"),
+            .bundleID("com.adobe.PremierePro.*"),
+            .bundleID("com.adobe.AfterEffects*"),
+            .bundleID("com.adobe.ame.*"),
+            .bundleID("com.adobe.mediaencoder*"),
+            .bundleID("com.adobe.Audition*"),
         ]),
         access: .user,
         action: .trash,

@@ -4,10 +4,12 @@ import Foundation
 
 /// Answers owner questions for command-line processes by name.
 ///
-/// `.processName(x)` is `.running` when a process is named exactly `x` (its short name or the
-/// last component of its executable path) and `.notRunning` otherwise. `.bundleID` is
-/// `.unknown`: bundle identifiers need `NSRunningApplication`, which the app layer supplies and
-/// combines with this provider through `CompositeOwnerProvider`.
+/// `.processName(x)` is `.running` when a process is the tool `x`: named `x`, or running a script
+/// named `x` (`node /usr/local/bin/npm`), or carrying a known marker in its arguments (the Gradle
+/// daemon). See ``ProcessOwnerMatcher``. `.bundleID` is `.unknown`, because bundle identifiers need
+/// `NSRunningApplication`, which the app layer supplies and combines with this provider through
+/// `CompositeOwnerProvider`. The one exception is an identifier ending in `*` (a prefix such as
+/// `com.adobe.PremierePro.*`), which is answered here from the running processes' app bundles.
 ///
 /// `.childNameAsBundleID` and `.rootSegmentAsBundleID` are normally resolved by the gate before it
 /// asks. If one arrives anyway, this provider finds the item's root among its `roots` and reads
@@ -35,8 +37,11 @@ public struct ProcessNameOwnerProvider: RunningAppsProvider {
         switch owner {
         case .processName(let name):
             return Self.isProcessRunning(named: name)
-        case .bundleID:
-            return .unknown
+        case .bundleID(let identifier):
+            // Only a trailing `*` can be answered here, from the executable paths of running processes.
+            // An exact bundle ID is the app layer's to answer.
+            guard identifier.hasSuffix("*") else { return .unknown }
+            return ProcessOwnerMatcher.state(ofBundleIDPrefix: String(identifier.dropLast()))
         case .childNameAsBundleID, .rootSegmentAsBundleID:
             let root = OwnerResolution.deepestRoot(containing: item, in: roots)
             switch OwnerResolution.target(for: owner, item: item, root: root, rootSpecs: rootSpecs) {
@@ -46,27 +51,10 @@ public struct ProcessNameOwnerProvider: RunningAppsProvider {
         }
     }
 
-    /// Whether any process is named exactly `name`. `.unknown` when the process list cannot be read.
+    /// Whether a process of the tool called `name` is running, judged by name and by argument vector
+    /// (see ``ProcessOwnerMatcher``). `.unknown` when the process list cannot be read or one of the
+    /// user's interpreter processes cannot be inspected.
     static func isProcessRunning(named name: String) -> OwnerState {
-        guard !name.isEmpty, let pids = ProcessInspector.allPIDs() else { return .unknown }
-        for pid in pids where pid > 0 {
-            var shortName = [CChar](repeating: 0, count: 256)
-            if proc_name(pid, &shortName, UInt32(shortName.count)) > 0, Self.text(shortName) == name {
-                return .running
-            }
-            var path = [CChar](repeating: 0, count: Int(4 * MAXPATHLEN))
-            if proc_pidpath(pid, &path, UInt32(path.count)) > 0,
-                (Self.text(path) as NSString).lastPathComponent == name
-            {
-                return .running
-            }
-        }
-        return .notRunning
-    }
-
-    /// The text of a NUL-terminated C character buffer.
-    private static func text(_ buffer: [CChar]) -> String {
-        let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-        return String(decoding: bytes, as: UTF8.self)
+        ProcessOwnerMatcher.state(ofProcessNamed: name)
     }
 }

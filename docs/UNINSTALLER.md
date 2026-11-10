@@ -62,6 +62,11 @@ Extra rules:
 3. A folder that contains another installed app's bundle ID anywhere in its
    direct children's names is dropped.
 4. Every candidate passes `SafetyGate` like any other finding.
+5. **Data nobody can rebuild is never pre-selected** (v1.0 review, tasks 9.1 and
+   9.4). A Safe folder becomes Review, with the reason shown, when it holds a VM
+   or disk image (`Docker.raw`, `data.img`, `*.utm`, `*.pvm`, `*.vmwarevm`,
+   `*.sparsebundle`, a `.dmg` over 1 GB), a non-empty `Data/Documents`, more than
+   1 GB, or contents that could not be read in full.
 
 ## 4. Deleting
 

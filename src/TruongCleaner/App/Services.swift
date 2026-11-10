@@ -62,7 +62,10 @@ nonisolated struct Services: Sendable {
                     runningApps: ProcessNameOwnerProvider(
                         roots: planned.expandedRoots, rootSpecs: planned.rule.roots),
                     openFiles: ProcessOpenFilesProvider(),
-                    allowWholeBundle: false,
+                    // Empty Trash may delete an app that sits in the Trash as a whole. The gate lets
+                    // only a final `.app` component through, so plug-in bundles and anything inside a
+                    // bundle are still refused.
+                    allowWholeBundle: planned.rule.allowsWholeBundle || planned.rule.id == TrashWork.ruleID,
                     rootOwners: [:]
                 )
             }

@@ -45,13 +45,13 @@ Never scanned for cleaning, never deleted, even inside a rule's root:
 |---|---|
 | System | `/System/**`, `/usr/**`, `/opt/**` (Homebrew is cleaned only via `brew`), `/bin`, `/sbin`, `/etc`, `/private/var/db/**`, `/private/var/vm/**`, `/Library/Updates/**`, `/macOS Install Data/**`, `/System/Volumes/Preboot/**`, `/Library/Apple/**`, `/Library/Keychains/**`, `/Library/Extensions/**`, `/Library/SystemExtensions/**` |
 | Roots themselves | `/`, `/Applications`, `/Library`, `/Users`, `/Users/Shared`, `~`, `~/Library`, every rule root folder itself (we delete children only) |
-| Apple sync and identity | `~/Library/Mobile Documents/**`, `~/Library/CloudStorage/**`, `~/Library/Caches/CloudKit/**`, `~/Library/Caches/com.apple.bird/**`, `~/Library/Caches/com.apple.cloudd/**`, `~/Library/Caches/FileProvider/**`, `~/Library/Application Support/FileProvider/**`, `~/Library/Keychains/**`, `~/Library/Accounts/**` |
-| Apple app data | `~/Library/Mail/**`, `~/Library/Messages/**` except rule `mail.messagesPreviews`, `~/Library/Calendars/**`, `~/Library/Contacts/**`, `~/Pictures/*.photoslibrary/**`, `~/Library/Safari/**`, `~/Library/Containers/com.apple.Notes/**` |
+| Apple sync and identity | `~/Library/Mobile Documents/**`, `~/Library/Application Support/CloudDocs/**`, `~/Library/CloudStorage/**`, `~/Library/Caches/CloudKit/**`, `~/Library/Caches/com.apple.bird/**`, `~/Library/Caches/com.apple.cloudd/**`, `~/Library/Caches/FileProvider/**`, `~/Library/Application Support/FileProvider/**`, `~/Library/Keychains/**`, `~/Library/Accounts/**` |
+| Apple app data | `~/Library/Mail/**`, `~/Library/Messages/**` except rule `mail.messagesPreviews`, `~/Library/Calendars/**`, `~/Library/Contacts/**`, `**/*.photoslibrary/**` (any location), `~/Library/Safari/**`, `~/Library/Containers/com.apple.Notes/**`, `~/Library/Group Containers/group.com.apple.*/**` |
 | Fragile Apple caches | `~/Library/Caches/com.apple.FontRegistry*`, `~/Library/Caches/com.apple.Spotlight*`, `~/Library/Caches/com.apple.finder`, `*com.apple.coreaudio*`, `~/Library/Application Support/com.apple.idleassetsd/**`, `~/Library/Application Support/com.apple.wallpaper/**`, `com.apple.homed`, `HomeKit`, `FamilyCircle`, `com.apple.containermanagerd` |
-| AI agents and dev state | `~/.claude/**` except `cache`, `paste-cache`, `shell-snapshots`; `~/.codex/**` except `cache`, `.tmp`; `~/.kiro/**`; `~/.cursor/**`; `~/.ollama/models/**`; `~/.lmstudio/models/**`; `~/.cache/huggingface/**`; `**/worktrees/**` under agent folders |
+| AI agents and dev state | `~/.claude/**` except `cache`, `paste-cache`, `shell-snapshots`; `~/.codex/**` except `cache`, `.tmp`; `~/.kiro/**`; `~/.cursor/**`; `~/.gemini/**`; `~/.continue/**`; `~/.codeium/**`; `~/.aider*/**`; `~/Library/Application Support/Claude/**`; `~/.ollama/models/**`; `~/.lmstudio/models/**`; `~/.cache/huggingface/**`; `**/worktrees/**` under agent folders |
 | Live interpreters and stores | `pypoetry/virtualenvs`, `pnpm/dlx`, `renv`, `llama.cpp`, `ms-playwright`, `~/.yarn/berry/cache`, `~/.cargo/registry/src`, `~/.cargo/registry/index`, `~/.cargo/git` |
 | Licensed vendors | iZotope, Native Instruments, Avid, FabFilter, PACE/iLok, Adobe `Library/Caches/Adobe*`, security agents (CrowdStrike, SentinelOne, Intego, Symantec, Jamf) |
-| Password managers and wallets | 1Password, Bitwarden, KeePassXC, Dashlane, Ledger Live, Exodus, Wasabi (all their folders) |
+| Password managers and wallets | 1Password, Bitwarden, KeePassXC, Dashlane, Enpass, Strongbox, MacPass, Keeper, NordPass, Proton Pass, LastPass, RoboForm; Ledger Live, Exodus, Wasabi, Bitcoin Core (`Application Support/Bitcoin`, `~/.bitcoin`), Electrum, Sparrow (all their folders) |
 | User choice | Every folder in Settings > Exclusions |
 
 Plus item-level guards from `.kiro/steering/safety.md` (symlinks, SIP flags,
@@ -116,7 +116,7 @@ Only folders listed here are touched; each needs its app closed.
 |---|---|---|---|
 | `apps.electronCaches` | Safe | For Slack, Discord, Teams, Zoom, Spotify, Notion, Obsidian, Figma, VS Code, Cursor, Postman, Signal, WhatsApp: inside `~/Library/Application Support/<app>/` only `Cache`, `Code Cache`, `GPUCache`, `DawnCache`, `GrShaderCache`, `CachedData`, `Crashpad/completed`, `logs` | Chat and editor app caches. Messages and settings stay. |
 | `apps.spotifyMedia` | Safe | `~/Library/Caches/com.spotify.client/Data` | Downloaded song cache (not offline downloads). |
-| `apps.adobeMediaCache` | Review | `~/Library/Application Support/Adobe/Common/Media Cache Files`, `Media Cache` | Video preview files; Premiere rebuilds them slowly. |
+| `apps.adobeMediaCache` | Review | `~/Library/Application Support/Adobe/Common/Media Cache Files`, `Media Cache`. Owners by bundle-ID prefix (names carry the year): `com.adobe.PremierePro.*`, `com.adobe.AfterEffects*`, `com.adobe.ame.*`, `com.adobe.mediaencoder*`, `com.adobe.Audition*` | Video preview files; Premiere rebuilds them slowly. |
 | `apps.steam` | Safe | `~/Library/Application Support/Steam/{appcache,depotcache,htmlcache,shadercache,logs}` | Steam caches. Games stay. |
 | `apps.cloudClientCaches` | Safe | `~/Library/Caches/com.dropbox.*`, `com.google.GoogleDrive`, `com.microsoft.OneDrive` | Sync client caches; client must be quit. Synced files stay. |
 
@@ -136,7 +136,7 @@ Only folders listed here are touched; each needs its app closed.
 | `dev.simCaches` | Safe | `~/Library/Developer/CoreSimulator/Caches` children | No simulator booted | Simulator caches. |
 | `dev.xctestDevices` | Safe | `~/Library/Developer/XCTestDevices` children | No test running | Leftover test clones. |
 | `dev.swiftpm` | Safe | `~/Library/Caches/org.swift.swiftpm` children; `~/.cache/swift-package-manager` | `swift` not running | Downloaded Swift packages. |
-| `dev.homebrew` | Safe | owner command `brew cleanup --prune=30` (absolute path from `/opt/homebrew/bin/brew` only) | Clean env; timeout 120 s | Old Homebrew downloads and versions. |
+| `dev.homebrew` | Safe | owner command `brew cleanup --prune=30` (absolute path `/opt/homebrew/bin/brew` or `/usr/local/bin/brew` only) | Clean env; no `brew` process running; timeout 300 s | Old Homebrew downloads and versions. |
 | `dev.npm` | Safe | `~/.npm/_cacache` | npm not running; never `_npx` | npm's download cache. |
 | `dev.yarn` | Safe | `~/Library/Caches/Yarn` children | yarn not running | Yarn's download cache. |
 | `dev.pnpm` | Safe | owner command `pnpm store prune` | pnpm on PATH from known dirs only | Unused packages in pnpm's store. |
@@ -152,13 +152,13 @@ Only folders listed here are touched; each needs its app closed.
 | `dev.androidCaches` | Safe | `~/.android/cache`, `~/.android/build-cache`, `~/Library/Caches/Google/AndroidStudio*` | Android Studio not running | Android build caches. |
 | `dev.dockerDangling` | Safe | owner command `docker image prune -f` and `docker builder prune -f --filter until=168h` | Docker daemon reachable; never volumes | Unused image layers and old build cache. |
 | `dev.dockerImage` | Info | `~/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw` size | Link to Docker Desktop > Settings > Resources | Docker's disk file does not shrink by itself. |
-| `dev.projectArtifacts` | Review | Only folders the user adds: `node_modules`, `.build`, `DerivedData`, `target` (with `Cargo.toml` beside), `build` (with a build file beside), `.next/cache`, `.venv`, `__pycache__`, `Pods`, `.gradle`, `.dart_tool` | minAge 30 d; never at `~` itself; never inside CloudStorage; skip if git-tracked | Build output of projects you have not touched in a month. |
+| `dev.projectArtifacts` | Review | Only folders the user adds: `node_modules`, `.build`, `DerivedData`, `target` (with `Cargo.toml` beside), `build` (with a build file beside), `.next/cache`, `.venv`, `__pycache__`, `Pods`, `.gradle`, `.dart_tool` | minAge 30 d; never at `~` itself; never inside CloudStorage; skip if git-tracked (`/usr/bin/git ls-files --error-unmatch`, fsmonitor off; git missing, timeout or error = skip) | Build output of projects you have not touched in a month. |
 
 ### 4.7 Mail and Messages
 
 | ID | Tier | Roots / match | Guards | Access | Explain |
 |---|---|---|---|---|---|
-| `mail.downloads` | Safe | `~/Library/Containers/com.apple.mail/Data/Library/Mail Downloads` children | Mail not running; minAge 30 d; file not modified after creation | fda | Copies of attachments you opened. The originals stay in Mail. |
+| `mail.downloads` | Review | `~/Library/Containers/com.apple.mail/Data/Library/Mail Downloads` children | Mail not running; minAge 30 d; file not modified after creation (checked by the gate; an edited copy may be the only one) | fda | Copies of attachments you opened. The originals stay in Mail. |
 | `mail.caches` | Safe | `~/Library/Caches/com.apple.mail` children | Mail not running | fda | Mail's cache. |
 | `mail.store` | Info | `~/Library/Mail` size | n/a | fda | Your email. Use Mail > Mailbox > Erase Deleted Items. |
 | `mail.messagesPreviews` | Safe | `~/Library/Messages/Caches/Previews` children, `~/Library/Messages/StickerCache` | Messages not running | fda | Link and sticker previews. |
@@ -175,7 +175,7 @@ Only folders listed here are touched; each needs its app closed.
 
 | ID | Tier | Roots / match | Guards | Explain |
 |---|---|---|---|---|
-| `installers.macOS` | Review | `/Applications/Install macOS*.app` | minAge 14 d; Apple-signed; not the running OS's installer if an update is pending | macOS installer apps you can download again. |
+| `installers.macOS` | Review | `/Applications/Install macOS*.app` | minAge 14 d; Apple-signed (Security framework, requirement `anchor apple`); bundle ID starts with `com.apple.InstallAssistant.`; not running; not the running OS's installer if an update is pending | macOS installer apps you can download again. |
 | `installers.downloads` | Review | `~/Downloads` files `.dmg .pkg .mpkg .iso .xip` | minAge 7 d; open-file check | Installers you already used. |
 | `installers.partial` | Safe | `~/Downloads` `*.download`, `*.crdownload`, `*.part` | minAge 1 d; open-file check | Unfinished browser downloads. |
 

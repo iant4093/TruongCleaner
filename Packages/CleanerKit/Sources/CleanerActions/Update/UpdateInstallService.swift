@@ -79,8 +79,9 @@ public struct UpdateInstallService: Sendable {
         return try installer.swap(running: running, new: prepared.verified.app)
     }
 
-    /// Discards a prepared update that will not be installed.
-    public func discard(_ prepared: PreparedUpdate) {
+    /// Discards a prepared update that will not be installed. Runs off the main actor.
+    @concurrent
+    public func discard(_ prepared: PreparedUpdate) async {
         UpdateWorkspace.discard(prepared.folder)
     }
 }

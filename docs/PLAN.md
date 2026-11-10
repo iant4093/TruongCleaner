@@ -1,7 +1,7 @@
 # TruongCleaner: Implementation Plan
 
-Status: **planning**, drafted 2026-11-06. Nothing is built yet.
-Owner: Ian Truong (`iant4093`). Repo: [iant4093/TruongCleaner](https://github.com/iant4093/TruongCleaner) (empty).
+Status: **v1.0 shipped** (2026-11-09). Planned 2026-11-06; the waves below are done except where `tasks.md` says otherwise.
+Owner: Ian Truong (`iant4093`). Repo: [iant4093/TruongCleaner](https://github.com/iant4093/TruongCleaner).
 Style reference: [iant4093/TruongCam](https://github.com/iant4093/TruongCam) (README, scripts, CI/CD).
 
 Read with:
@@ -36,7 +36,7 @@ every action, and can undo it.
 | D1 | This Kiro Crew session (Opus 5.5) is the orchestrator and code reviewer. Sonnet 5.5 builders implement each task from a written brief. A task is done only after the orchestrator's review passes. | Ian's request; same setup that shipped FrankenTTY. See section 9. |
 | D2 | Swift 6.4, Swift 6 language mode, complete strict concurrency, warnings as errors. Built with Xcode 27.0. | Matches TruongCam; catches data races at compile time. |
 | D3 | Minimum macOS **26.0**, **arm64 only**. | Every Liquid Glass API is macOS 26.0. The macOS 27 SDK adds no new SwiftUI glass API (checked in the installed SDK). macOS 27 dropped Intel. |
-| D4 | **SwiftUI** for all UI, with `@Observable` models. AppKit only for app icons (`NSWorkspace.icon`), Trash (`NSWorkspace.recycle`), Reveal in Finder, `NSOpenPanel`. | Native look for free; standard controls adopt Liquid Glass automatically. |
+| D4 | **SwiftUI** for all UI, with `@Observable` models. AppKit only for the calls listed in `tech.md` (icons, Reveal in Finder, panels, pasteboard, running apps, update relaunch). Trash uses `FileManager.trashItem` (S3). | Native look for free; standard controls adopt Liquid Glass automatically. |
 | D5 | **Not sandboxed**, distributed outside the Mac App Store. | App Store rule 2.4.5 requires a sandbox, bans root and bans outside updates. A sandboxed cleaner cannot see most caches. |
 | D6 | **Zero third-party runtime dependencies.** System frameworks only (SwiftUI, Charts, Foundation, Darwin, AppKit, ServiceManagement later). | Small and fast; TruongCam's "0 runtime dependencies" badge. |
 | D7 | Core logic lives in a local SwiftPM package `Packages/CleanerKit` (CleanerCore, CleanerScanner, CleanerActions). The app target is thin. | Headless `swift test` on CI; clean module boundaries for parallel builders. |
@@ -44,14 +44,14 @@ every action, and can undo it.
 | D9 | Default delete action is **Move to Trash**, with a history log and Undo. "Free space now" then empties *only the items TruongCleaner moved*. Permanent delete is opt-in per clean. | Reversible by default, yet space is really freed. Mole and Lemon delete permanently and have data-loss reports. |
 | D10 | **No privileged helper in v1.** Root-only items (Time Machine snapshots, Spotlight index, `/Library/Caches` owned by root) show as *Info* rows: size, explanation, Apple's way to fix it, a copyable command. | A helper needs a stable Developer ID signature; ad-hoc signing changes identity every build (verified). |
 | D11 | **Full Disk Access is optional.** Detection is tri-state (granted, not granted, unknown). Any `EPERM` marks that row "Needs access" with a button to the FDA pane. | No public API to ask; the old TCC.db probe is dead on macOS 27; Apple plans more FDA controls. |
-| D12 | The scanner uses `getattrlistbulk(2)` with a bounded worker pool, allocated sizes, hard-link de-duplication, and no crossing of volumes. Final choice after spike S1. | Fewest system calls per file; to be proven by measurement on this Mac. |
+| D12 | The scanner uses `getattrlistbulk(2)` with a bounded worker pool, allocated sizes, hard-link de-duplication, and no crossing of volumes. Confirmed by spike S1 (7.3× `du`). | Fewest system calls per file; to be proven by measurement on this Mac. |
 | D13 | The rule catalog is **our own data**, written from facts in `docs/RESEARCH.md`. No code is copied from any other cleaner. | Mole, Lemon and Peel are GPL; Pearcleaner has a Commons Clause; System Data Unpacked is all rights reserved. |
 | D14 | Repo layout, README, `scripts/` and CI/CD follow TruongCam. CI runs on GitHub's `xcode-27` image. Pushes to `main` that pass every gate publish a Latest release. | Ian's format. |
 | D15 | Release assets: `TruongCleaner.dmg`, `TruongCleaner.zip`, `install.sh`, `TruongCleaner.dSYM.zip`, `SHA256SUMS`, with build provenance attestations. | One-command install plus a normal DMG. |
 | D16 | No telemetry. The only network call is a daily check of the GitHub Releases API for a newer build, which the user can turn off. | Privacy; zero dependencies. |
 | D17 | Signing: **ad-hoc** for now (Q1). | $0 and no secrets, like TruongCam. Developer ID later changes the path in section 6. |
 | D18 | License: **MIT** (Q4). | Same as FrankenTTY. |
-| D19 | Updates: notify-only checker, no Sparkle (Q2). App Uninstaller after 1.0 (Q3). Orchestrator may push to `main` (Q5). | Ian, 2026-11-06. |
+| D19 | Updates: notify-only checker, no Sparkle (Q2; superseded by D20). App Uninstaller after 1.0 (Q3; superseded by D20). Orchestrator may push to `main` (Q5). | Ian, 2026-11-06. |
 | D20 | Updates install from inside the app (Settings > General, Overview banner): download, SHA-256 check, signature check, swap the bundle, relaunch. Still no Sparkle. App Uninstaller moves into 1.0 (`docs/UNINSTALLER.md`). | Ian, 2026-11-09. |
 
 ---
@@ -76,7 +76,7 @@ every action, and can undo it.
 
 | Area | Note |
 |---|---|
-| App Uninstaller with leftovers | Strict bundle-ID evidence only, fail closed. Highest data-loss risk in other tools (research B §1.9). Wave 6. |
+| ~~App Uninstaller with leftovers~~ | Shipped in 1.0 (D20, `docs/UNINSTALLER.md`). |
 | Privileged helper | Only after a Developer ID decision. Would cover snapshot thinning, Spotlight rebuild, root caches. |
 | Menu bar extra | Free space at a glance. |
 | Homebrew tap | Needs Developer ID for the official cask repo; a personal tap works without it. |
@@ -143,8 +143,7 @@ curl -fsSL https://github.com/iant4093/TruongCleaner/releases/latest/download/in
 release, checks the hash, stops on mismatch, quits a running copy, replaces
 `/Applications/TruongCleaner.app` (or `~/Applications` if `/Applications` is
 not writable), and opens it. Files fetched by `curl` carry no quarantine flag,
-so Gatekeeper does not block first launch. This must be proven on macOS 27 in
-spike S7.
+so Gatekeeper does not block first launch (confirmed on macOS 27, EVIDENCE S7).
 
 The DMG is also offered. DMG users must open the app once, then use **System
 Settings > Privacy & Security > Open Anyway** (Control-click Open was removed
@@ -154,7 +153,7 @@ in macOS 15).
 
 The app checks `api.github.com/repos/iant4093/TruongCleaner/releases/latest`
 at most once a day, compares the build number, and shows a banner with the
-release notes and the install command. Sparkle 2 is the alternative (open, Q2).
+release notes. **Superseded by D20:** the app downloads, verifies and installs the update itself (Settings > General > Install Update).
 
 ### 6.3 What changes with a paid Developer ID (Q1)
 
@@ -183,7 +182,7 @@ Notes:
 
 - There is no `macos-27` label. macOS 27 is only on `xcode-27`.
 - CodeQL cannot scan Swift 6.4 / Xcode 27 (GitHub changelog 2026-10-19). Same as TruongCam: CodeQL on workflows; the compiler, SwiftLint, tests and the Xcode analyzer cover the app.
-- The image's default Xcode is 27.1 while Ian's Mac has 27.0. Wave 1 decides whether to pin `/Applications/Xcode_27.0.app` or accept 27.1, based on the first CI run.
+- The image's default Xcode is 27.1 while Ian's Mac has 27.0. Decision: accept the image default (not pinned); every CI run since build 1 has passed with zero source warnings.
 - Public repo: hosted macOS minutes are free.
 
 ---
@@ -264,7 +263,7 @@ Flow (full protocol in `.kiro/steering/agent-roles.md`):
 | ID | Question | Answer |
 |---|---|---|
 | Q1 | Will you pay for an Apple Developer ID? | No, for now. Ad-hoc; no helper; install via `install.sh` |
-| Q2 | Sparkle 2 auto-update (+3 MB, one dependency) or a notify-only checker (zero deps)? | Notify-only |
-| Q3 | Ship the App Uninstaller in 1.0, or after? | After 1.0 (Wave 6 optional) |
+| Q2 | Sparkle 2 auto-update (+3 MB, one dependency) or a notify-only checker (zero deps)? | Notify-only at first; in-app install without Sparkle since D20 |
+| Q3 | Ship the App Uninstaller in 1.0, or after? | After 1.0 at first; moved into 1.0 on 2026-11-09 (D20) |
 | Q4 | MIT license? | MIT, copyright "Ian Truong" |
 | Q5 | May the orchestrator push straight to `main` in this repo? | Yes |

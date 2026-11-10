@@ -17,9 +17,9 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 0.4 | B | c | S4 volume numbers: `spikes/s4-volume/` prints every capacity key, `statfs`, `ATTR_VOL_SPACEUSED`, `tmutil listlocalsnapshots /`, `diskutil apfs list -plist` summary | Numbers; I compares with System Settings ✋ |
 | [x] | 0.5 | B | d | S5 UI prototype: `spikes/s5-ui/` SwiftUI app with sidebar, icon tiles, grouped form, glass toolbar and clean bar; screenshots light/dark | Screenshots beside System Settings; I approves ✋ |
 | [x] | 0.6 | B | e | S2 FDA probe app: `spikes/s2-fda/` reports each probe result and opens the deep link | I grants/revokes FDA, reports ✋ |
-| [ ] | 0.7 | O | | S6 CI proof: minimal Xcode project + package on a scratch branch through `xcode-27`; record Xcode version used | CI log link |
-| [ ] | 0.8 | I | | S7 install proof: run `install.sh` from the scratch release and open the DMG path | Notes ✋ |
-| [ ] | 0.9 | O | | Update PLAN decisions D9, D12 and budgets P5 from spike results | PLAN diff |
+| [x] | 0.7 | O | | S6 CI proof: minimal Xcode project + package on a scratch branch through `xcode-27`; record Xcode version used | CI log link |
+| [x] | 0.8 | I | | S7 install proof: run `install.sh` from the scratch release and open the DMG path | Notes ✋ |
+| [x] | 0.9 | O | | Update PLAN decisions D9, D12 and budgets P5 from spike results | PLAN diff |
 
 ## Wave 1: Foundation
 
@@ -29,8 +29,8 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 1.2 | B | | `Packages/CleanerKit` skeleton: three library targets, `tcbench` exe, test targets, `Fixtures` helper (`FixtureTree`), one passing test per target | — |
 | [x] | 1.3 | B | a | `scripts/`: `lint.sh` (pinned SwiftLint + checksum), `test.sh package`, `build.sh {debug,release,all}`, `package.sh` (ad-hoc sign, verify, DMG, ZIP, dSYM zip, SHA256SUMS), `install.sh`, `check-workflows.sh`, `check-deletion-sites.sh`, `clean.sh` (removes `build/` only) | DIST-01, DIST-03, SAFE-01 |
 | [x] | 1.4 | O | a | `.github/workflows/ci.yml`, `dependabot.yml`, `actionlint.yaml`, `.swiftlint.yml`; SHA pins | CI-01..04, DIST-02 |
-| [ ] | 1.5 | O | | README in TruongCam format; LICENSE; first push (after Q5) | — |
-| [ ] | 1.6 | I | | Install the first Latest release with `install.sh` ✋ | — |
+| [x] | 1.5 | O | | README in TruongCam format; LICENSE; first push (after Q5) | — |
+| [x] | 1.6 | I | | Install the first Latest release with `install.sh` ✋ | — |
 
 ## Wave 2: Scanner + Overview
 
@@ -44,7 +44,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 2.4b | B | | Nested rule overlaps (`coveredByOtherRule`) and pruned project walks | SCAN-07 |
 | [x] | 2.6 | B | | `tcbench` scenarios; numbers into EVIDENCE | PERF-01..05 |
 | [x] | 2.6b | B | | Investigate cancel latency on a 3-core runner (CI saw 3.3 s for a 200 ms budget in `cancellingTheStreamConsumerEndsPromptly`): look for cooperative-pool starvation (semaphore waits in `ReadOnlyCommand`/`OwnerProcess`, `WalkPool` condition waits) and measure with `taskpolicy`/limited cores | SCAN-05 |
-| [ ] | 2.7 | I | | Overview totals vs `df` and System Settings ✋ | — |
+| [x] | 2.7 | I | | Overview totals vs `df` and System Settings ✋ | — |
 
 ## Wave 3: Clean engine + Smart Clean
 
@@ -56,8 +56,8 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 3.4 | B | | App `RunningApps` + `OpenFiles` providers (`proc_listpidspath`) | SAFE-07, SAFE-08 |
 | [x] | 3.5 | B | | Smart Clean page, clean bar, confirm dialog, result sheet with measured delta | CLEAN-02, CLEAN-06, UI-03, UI-06 |
 | [x] | 3.6 | B | | Trash + History pages, Put Back, Free Space Now | CLEAN-04, CLEAN-05 |
-| [ ] | 3.7 | O | | Independent safety review by a fresh reviewer agent with no session context | — |
-| [ ] | 3.8 | I | | Real clean + undo on items Ian picks ✋ | — |
+| [x] | 3.7 | O | | Independent safety review by a fresh reviewer agent with no session context | — |
+| [x] | 3.8 | I | | Real clean + undo on items Ian picks ✋ | — |
 
 ## Wave 4: System Data + Developer
 
@@ -69,7 +69,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 4.4 | B | | Mail, iOS, installers rules | RULE-01 |
 | [x] | 4.5 | B | | Developer page with simulators table and project folders | UI-02 |
 | [x] | 4.6 | B | | Overview and System Data: add measured home categories (Applications, Documents, Downloads, Library caches, Developer, iOS backups) so "Unexplained" shrinks to the real remainder | SYS-03 |
-| [ ] | 4.7 | I | | System Data page vs System Settings ✋ | — |
+| [x] | 4.7 | I | | System Data page vs System Settings ✋ | — |
 
 ## Wave 5: Large files, Space Lens, Settings, Access
 
@@ -96,7 +96,7 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 7.2 | B | b | Accessibility pass: labels, keyboard, Reduce Transparency, Increase Contrast, Reduce Motion | UI-04, UI-05, UI-07 |
 | [x] | 7.3 | B | c | App icon (Icon Composer), screenshots in `docs/screenshots/` (webp) | — |
 | [ ] | 7.4 | O | | Final README, release notes, v1.0.0 | — |
-| [ ] | 7.5 | I | | Full hand test on Ian's Mac ✋ | — |
+| [x] | 7.5 | I | | Full hand test on Ian's Mac ✋ | — |
 
 ## Wave 8: Feedback from Ian's hand checks (2026-11-09)
 
@@ -106,3 +106,16 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 8.1 | B | a | Shared row layout for Smart Clean, Developer, System Data; friendly app names in skip reasons | UI-02, UI-06 |
 | [x] | 8.2 | B | b | Install updates from Settings and the Overview banner | DIST-04 |
 | [x] | 8.3 | B | | Row polish follow-ups: System Data gap, FDA footer, applets, admin reasons, app sort | UI-02 |
+| [x] | 2.8 | B | | Smart Clean speed: glob descent, shared thread budget, streaming sections (brief `2.7.md`, EVIDENCE "Task 2.7 review") | PERF-04 |
+
+## Wave 9: v1.0 code review
+
+| ✓ | ID | Owner | Par | Task |
+|---|---|---|---|---|
+| [x] | 9.0 | O | | Four independent reviews (safety, scanner, app, release): `docs/reviews/` |
+| [x] | 9.1 | B | a | Safety fixes |
+| [x] | 9.2 | B | b | Scanner fixes |
+| [x] | 9.3 | B | c | App, updater, installer fixes; version 1.0.0 |
+| [x] | 9.4 | B | | Follow-ups: leftover folders Review after measuring (documents, disk images, >1 GB, partial); gate age walk on the shared budget |
+| [x] | 9.5 | O | | CI (attest job, self-test, versioned release title and notes), safety hook, README, PLAN, RULE_CATALOG, UNINSTALLER, safety.md 16a, tasks |
+| [ ] | 9.6 | Ian | | Decide: sign `SHA256SUMS` with Ed25519 for in-app updates (safety review #3) |

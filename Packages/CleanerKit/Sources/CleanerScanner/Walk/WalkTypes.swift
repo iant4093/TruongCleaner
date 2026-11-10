@@ -2,7 +2,7 @@ import Foundation
 
 /// Settings for one `BulkWalker.walk` call.
 public struct WalkOptions: Sendable {
-    /// Number of worker threads. Clamped to `1...min(8, activeProcessorCount)` when the walk starts.
+    /// Number of worker threads. Clamped to `1...min(6, activeProcessorCount)` when the walk starts.
     /// When the walk shares a thread budget with other walks, it starts with one thread and this is the
     /// most it may grow to.
     public var maxWorkers: Int
@@ -38,7 +38,7 @@ public struct WalkOptions: Sendable {
 
     /// Creates walk options.
     public init(
-        maxWorkers: Int = min(8, ProcessInfo.processInfo.activeProcessorCount),
+        maxWorkers: Int = min(6, ProcessInfo.processInfo.activeProcessorCount),
         totalsDepth: Int = 1,
         topFilesCount: Int = 0,
         limit: Duration? = nil,
@@ -56,7 +56,11 @@ public struct WalkOptions: Sendable {
     }
 }
 
-/// Identity of a file system entry: the volume (`ATTR_CMN_FSID`) and the file ID on that volume.
+/// Identity of a file system entry: its `ATTR_CMN_FSID` and the file ID.
+///
+/// This is what `Finding.fsid`/`fileID` carry and what the safety gate reads again with `getattrlist`.
+/// `ATTR_CMN_FSID` is the same on the System and Data volumes, so the walker never lets one walk cover both
+/// (it compares `f_fsid` for that), and two entries of one walk cannot collide.
 public struct EntryID: Sendable, Hashable {
     /// The volume's `fsid_t`, packed as `val[0] << 32 | val[1]`.
     public let fsid: UInt64
@@ -127,6 +131,9 @@ public struct NodeTotal: Sendable {
 public struct WalkResult: Sendable {
     /// The folder that was walked.
     public let root: URL
+    /// Identity of the file system the walk stayed on (`f_fsid`, packed). Unlike `EntryID.fsid`, which is the
+    /// value the safety gate re-reads, it tells the System volume from the Data volume.
+    let volume: UInt64
     /// Kept totals, sorted by depth and then path. The root is first.
     public let nodes: [NodeTotal]
     /// The largest files by allocated size, largest first. Empty when `topFilesCount` is 0.
@@ -152,12 +159,18 @@ public struct WalkResult: Sendable {
     /// True when the walk was cancelled or hit its time limit before it finished.
     public let partial: Bool
 
+    /// True when the totals may be too low: the walk was stopped, or it dropped entries or folders for a
+    /// reason other than permission (`otherErrors`: a failed open or listing, an unreadable attribute).
+    /// Permission errors are reported separately as `deniedDirectories`.
+    var isIncomplete: Bool { partial || otherErrors > 0 }
+
     init(
-        root: URL, nodes: [NodeTotal], topFiles: [NodeTotal], files: Int, directories: Int, symlinks: Int,
+        root: URL, volume: UInt64, nodes: [NodeTotal], topFiles: [NodeTotal], files: Int, directories: Int, symlinks: Int,
         hardLinkDuplicates: Int, crossVolumeSkipped: Int, deniedDirectories: [URL], deniedCount: Int,
         otherErrors: Int, privateSizeMissing: Int, partial: Bool
     ) {
         self.root = root
+        self.volume = volume
         self.nodes = nodes
         self.topFiles = topFiles
         self.files = files

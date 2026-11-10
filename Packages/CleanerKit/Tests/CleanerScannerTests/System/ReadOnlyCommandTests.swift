@@ -52,19 +52,17 @@ struct ReadOnlyCommandTests {
 
     // MARK: Environment
 
-    @Test func environmentIsScrubbed() {
-        let parent = ["PATH": "/evil", "HOME": "/evil", "LANG": "xx", "SECRET_TOKEN": "x", "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"]
-        let environment = ReadOnlyCommand.scrubbedEnvironment(parent: parent)
-        #expect(environment["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin")
+    @Test func environmentIsExactlyPathHomeAndLang() {
+        let environment = ReadOnlyCommand.scrubbedEnvironment()
+        #expect(environment["PATH"] == "/usr/bin:/bin")
         #expect(environment["LANG"] == "en_US.UTF-8")
         #expect(environment["HOME"] == NSHomeDirectory())
-        #expect(environment["DEVELOPER_DIR"] == "/Applications/Xcode.app/Contents/Developer")
-        #expect(Set(environment.keys) == ["PATH", "HOME", "LANG", "DEVELOPER_DIR"])
+        #expect(Set(environment.keys) == ["PATH", "HOME", "LANG"])
     }
 
-    @Test func developerDirIsOmittedWhenTheParentHasNone() {
-        let environment = ReadOnlyCommand.scrubbedEnvironment(parent: ["PATH": "/x"])
-        #expect(Set(environment.keys) == ["PATH", "HOME", "LANG"])
+    @Test func developerDirIsNeverPassedOn() {
+        // Whatever the app's own environment holds, the child never gets it (scanner review #10).
+        #expect(ReadOnlyCommand.scrubbedEnvironment()["DEVELOPER_DIR"] == nil)
     }
 
     @Test func aChildSeesOnlyTheScrubbedEnvironment() async {
@@ -72,9 +70,18 @@ struct ReadOnlyCommandTests {
         #expect(result.succeeded)
         let names = Set(result.stdoutString.split(separator: "\n").compactMap { $0.split(separator: "=").first.map(String.init) })
         // `env` itself may add `_` or `__CF_USER_TEXT_ENCODING`; nothing else may appear.
-        let allowed: Set<String> = ["PATH", "HOME", "LANG", "DEVELOPER_DIR", "_", "__CF_USER_TEXT_ENCODING", "PWD", "SHLVL"]
+        let allowed: Set<String> = ["PATH", "HOME", "LANG", "_", "__CF_USER_TEXT_ENCODING", "PWD", "SHLVL"]
         #expect(names.isSubset(of: allowed), "unexpected variables: \(names.subtracting(allowed))")
         #expect(names.contains("PATH"))
+        #expect(!names.contains("DEVELOPER_DIR"))
+    }
+
+    @Test func simctlIsStillFoundWithTheScrubbedEnvironment() async {
+        // xcrun must find simctl through `xcode-select` alone. Skipped on a Mac without Xcode.
+        let result = await ReadOnlyCommand.run(
+            "/usr/bin/xcrun", ["simctl", "list", "devices", "--json"], timeout: .seconds(30))
+        if let error = result.probeError(tool: "xcrun"), error == .toolMissing("xcrun") { return }
+        #expect(result.succeeded, "xcrun simctl failed: \(result.stderrString.prefix(200))")
     }
 
     // MARK: Process handling
@@ -85,6 +92,70 @@ struct ReadOnlyCommandTests {
         #expect(!result.succeeded)
         #expect(result.duration < timingBudget(.seconds(3)))
         #expect(result.launchError == nil)
+    }
+
+    // MARK: Cancellation (scanner review #8) and SIGKILL (#9)
+
+    @Test func cancellingTheCallerStopsTheCommand() async throws {
+        let clock = ContinuousClock()
+        let started = clock.now
+        let task = Task { await ReadOnlyCommand.execute("/bin/sleep", ["30"], timeout: .seconds(30)) }
+        try await Task.sleep(for: .milliseconds(300))
+        task.cancel()
+        let result = await task.value
+
+        #expect(result.cancelled)
+        #expect(!result.timedOut)
+        #expect(!result.succeeded)
+        #expect(result.probeError(tool: "sleep") == .notRun("cancelled"))
+        #expect(started.duration(to: clock.now) < timingBudget(.seconds(5)))
+    }
+
+    @Test func aCallerCancelledBeforeTheStartNeverLaunchesTheCommand() async {
+        let task = Task { () -> CommandResult in
+            while !Task.isCancelled { await Task.yield() }
+            return await ReadOnlyCommand.execute("/bin/sleep", ["30"], timeout: .seconds(30))
+        }
+        task.cancel()
+        let started = ContinuousClock().now
+        let result = await task.value
+
+        #expect(result.cancelled)
+        #expect(result.exitCode == nil)
+        #expect(result.launchError == nil)
+        #expect(started.duration(to: ContinuousClock().now) < timingBudget(.seconds(5)))
+    }
+
+    @Test func aCancelledCommandThatIgnoresTerminateIsStillKilled() async throws {
+        let clock = ContinuousClock()
+        let started = clock.now
+        let task = Task {
+            await SupervisedProcess.run(
+                "/usr/bin/perl", ["-e", "$SIG{TERM} = 'IGNORE'; sleep 30"], environment: ["PATH": "/usr/bin:/bin"],
+                timeout: .seconds(30), terminateGrace: .milliseconds(300), mergeOutput: false, stopOnCancel: true)
+        }
+        try await Task.sleep(for: .milliseconds(400))
+        task.cancel()
+        let outcome = await task.value
+
+        #expect(outcome.cancelled)
+        #expect(outcome.terminationStatus == SIGKILL)
+        #expect(started.duration(to: clock.now) < timingBudget(.seconds(8)))
+    }
+
+    @Test func aRunWithoutStopOnCancelKeepsRunningWhenTheCallerIsCancelled() async throws {
+        let task = Task {
+            await SupervisedProcess.run(
+                "/bin/sh", ["-c", "sleep 1; echo done"], environment: ["PATH": "/usr/bin:/bin"],
+                timeout: .seconds(30), terminateGrace: .seconds(1), mergeOutput: false)
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        task.cancel()
+        let outcome = await task.value
+
+        #expect(!outcome.cancelled)
+        #expect(outcome.terminationStatus == 0)
+        #expect(String(decoding: outcome.stdout, as: UTF8.self) == "done\n")
     }
 
     @Test func largeOutputOnBothPipesDoesNotDeadlock() async {

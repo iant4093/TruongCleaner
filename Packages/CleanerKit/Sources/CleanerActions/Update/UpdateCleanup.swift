@@ -5,7 +5,7 @@ import Foundation
 public struct UpdateCleanupReport: Sendable, Equatable {
     /// Old app bundles moved to the Trash.
     public var trashedBundles: [URL] = []
-    /// Stale update folders deleted.
+    /// Stale update folders moved to the Trash.
     public var removedFolders: [URL] = []
     /// Leftovers it left alone, with the reason.
     public var skipped: [(url: URL, reason: String)] = []
@@ -21,12 +21,12 @@ public struct UpdateCleanupReport: Sendable, Equatable {
 
 /// Removes what an update leaves behind. Runs once at launch, off the main actor.
 ///
-/// These are the only deletion sites of the update feature, and both are narrow:
-/// - `.TruongCleaner-old-<uuid>.app` next to the running app is moved to the **Trash**, and only
-///   if it is a real directory whose `CFBundleIdentifier` is ours.
-/// - `TruongCleanerUpdate-<uuid>` folders in the temporary directory are deleted, and only if they
-///   are real directories owned by the user and older than `minimumAge` (so a second running copy
-///   that is mid-update is not disturbed).
+/// Both clean-ups are narrow, and both move to the **Trash** instead of deleting:
+/// - `.TruongCleaner-old-<uuid>.app` next to the running app, only if it is a real directory
+///   whose `CFBundleIdentifier` is ours.
+/// - `TruongCleanerUpdate-<uuid>` folders in the temporary directory, only if they are real
+///   directories owned by the user and older than `minimumAge` (so a second running copy that is
+///   mid-update is not disturbed).
 public struct UpdateCleanup: Sendable {
     private let executor: any ItemExecutor
 
@@ -53,7 +53,7 @@ public struct UpdateCleanup: Sendable {
     ) async -> UpdateCleanupReport {
         var report = UpdateCleanupReport()
         await trashOldBundles(in: runningAppFolder, bundleIdentifier: bundleIdentifier, report: &report)
-        removeStaleFolders(in: temporaryDirectory, minimumAge: minimumAge, now: now, report: &report)
+        await trashStaleFolders(in: temporaryDirectory, minimumAge: minimumAge, now: now, report: &report)
         return report
     }
 
@@ -85,9 +85,9 @@ public struct UpdateCleanup: Sendable {
         }
     }
 
-    private func removeStaleFolders(
+    private func trashStaleFolders(
         in root: URL, minimumAge: TimeInterval, now: Date, report: inout UpdateCleanupReport
-    ) {
+    ) async {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: root.path(percentEncoded: false)) else {
             return
         }
@@ -102,7 +102,7 @@ public struct UpdateCleanup: Sendable {
                 continue
             }
             do {
-                try FileManager.default.removeItem(at: url)
+                _ = try await executor.moveToTrash(url)
                 report.removedFolders.append(url)
             } catch {
                 report.skipped.append((url, error.localizedDescription))

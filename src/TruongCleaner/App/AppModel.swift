@@ -65,6 +65,21 @@ final class AppModel {
         self.applications = ApplicationsModel(settings: settings, services: services)
         self.trash = TrashModel(services: services, settings: settings)
         self.cleanHistory = HistoryModel(services: services)
+        self.updates.isBusy = { [weak self] in self?.isBusy ?? false }
+    }
+
+    /// True while something is changing the disk or running an owner command: a clean (Smart Clean or
+    /// Developer), Put Back, Free Space Now, an uninstall, Empty Trash, or a Homebrew, Docker or
+    /// simulator command. Quitting and Install Update wait for it, because stopping the app halfway
+    /// loses the result sheet, and the history line of an owner command is written after it ends.
+    var isBusy: Bool {
+        smartClean.isCleaning || smartClean.isWorking
+            || !developer.running.isEmpty
+            || developer.files.isCleaning || developer.files.isWorking
+            || developer.projects.isCleaning || developer.projects.isWorking
+            || applications.isCleaning || applications.isWorking
+            || trash.activity != .idle
+            || cleanHistory.isPuttingBack
     }
 
     /// What the toolbar's Scan button (⌘R) does on the current page.

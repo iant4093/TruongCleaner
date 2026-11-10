@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 @main
 struct TruongCleanerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model: AppModel
     private let launch: LaunchOptions
 
@@ -11,6 +13,7 @@ struct TruongCleanerApp: App {
         if let page = launch.page { model.selection = page }
         self.launch = launch
         self.model = model
+        AppDelegate.model = model
         // Tidy up after an earlier in-app update (old app to the Trash, stale temp folders).
         Task { await UpdateChecker.removeLeftovers() }
     }
@@ -76,7 +79,10 @@ private struct LaunchOptions {
     let lensRoot: URL?
     let windowSize: CGSize?
 
-    init(defaults: UserDefaults = .standard) {
+    /// Reads only the launch arguments (`-TCStartPage ...`), not the saved preferences. A value left
+    /// in the app's preferences by `defaults write` must not start a scan on every launch.
+    init(arguments: [String: Any] = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)) {
+        let defaults = LaunchArguments(values: arguments)
         let name = defaults.string(forKey: "TCStartPage")
         page = name.flatMap { Page(rawValue: $0) }
         opensSettings = name == "settings"
@@ -87,6 +93,24 @@ private struct LaunchOptions {
             windowSize = CGSize(width: parts[0], height: parts[1])
         } else {
             windowSize = nil
+        }
+    }
+}
+
+/// The launch arguments as typed values.
+private struct LaunchArguments {
+    let values: [String: Any]
+
+    func string(forKey key: String) -> String? {
+        values[key] as? String
+    }
+
+    /// `-TCAutoScan YES` arrives as the string "YES".
+    func bool(forKey key: String) -> Bool {
+        switch values[key] {
+        case let flag as Bool: flag
+        case let text as String: ["YES", "TRUE", "1"].contains(text.uppercased())
+        default: false
         }
     }
 }

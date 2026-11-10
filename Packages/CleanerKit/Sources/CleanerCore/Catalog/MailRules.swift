@@ -19,12 +19,14 @@ enum MailRules {
 
     /// Each child of Mail's attachment copies, older than 30 days.
     ///
-    /// The catalog also asks that the file was not modified after it was created. The scan does not
-    /// read creation dates, so only the age guard is applied.
+    /// Review, not Safe: a saved edit of an attachment stays in this folder and may be the only copy.
+    /// The catalog asks that the file was not modified after it was created. The scan does not read
+    /// creation dates, so `SafetyGate` checks it just before acting (`DenyReason.editedAfterDownload`),
+    /// and the item is never pre-selected.
     static let mailDownloads = Rule(
         id: "mail.downloads",
         category: .mail,
-        tier: .safe,
+        tier: .review,
         roots: [.home(["Library", "Containers", "com.apple.mail", "Data", "Library", "Mail Downloads"])],
         match: .children,
         guards: Guards(minAge: .days(30), owners: mailOwner),

@@ -8,6 +8,10 @@ private let vnodeRegular: UInt32 = 1
 private let vnodeDirectory: UInt32 = 2
 private let vnodeSymlink: UInt32 = 5
 
+// ATTR_DIR_MOUNTSTATUS bits from <sys/attr.h>.
+private let directoryIsMountPoint: UInt32 = 0x0000_0001  // DIR_MNTSTATUS_MNTPOINT
+private let directoryIsAutomountTrigger: UInt32 = 0x0000_0002  // DIR_MNTSTATUS_TRIGGER
+
 /// Counts kept per worker and merged at the end.
 struct WalkCounters: Sendable {
     var files = 0
@@ -46,7 +50,10 @@ struct WalkContext: Sendable {
     let denied: DeniedList
     let stop: StopControl
     let progress: ProgressReporter
+    /// `ATTR_CMN_FSID` of the root. Only a fast pre-filter for listed entries: System and Data share one value.
     let rootFSID: UInt64
+    /// `f_fsid` of the root's file system (`volumeIdentity(of:)`). The real volume boundary.
+    let rootVolume: UInt64
     let totalsDepth: Int
     let topFilesCapacity: Int
     /// 0 disables hand-off (single worker).
@@ -84,7 +91,7 @@ private struct PendingDirectory {
 }
 
 /// Bounds-checked reader over one packed `getattrlistbulk` entry.
-private struct EntryReader {
+struct EntryReader {
     let base: UnsafeRawPointer
     let length: Int
     var offset: Int
@@ -109,6 +116,9 @@ private func makeAttributeList() -> attrlist {
         | attrgroup_t(ATTR_CMN_MODTIME)
         | attrgroup_t(ATTR_CMN_FLAGS)
         | attrgroup_t(ATTR_CMN_FILEID)
+    // A mount point lists with its parent's fsid and opening it can block (stale share, autofs trigger),
+    // so ask for the mount status and skip such folders before opening them.
+    list.dirattr = attrgroup_t(ATTR_DIR_MOUNTSTATUS)
     list.fileattr = attrgroup_t(ATTR_FILE_LINKCOUNT) | attrgroup_t(ATTR_FILE_ALLOCSIZE)
     // With FSOPT_ATTR_CMN_EXTENDED the fork field selects the ATTR_CMNEXT_* attributes.
     list.forkattr = attrgroup_t(ATTR_CMNEXT_PRIVATESIZE)
@@ -120,8 +130,12 @@ func packFSID(_ first: Int32, _ second: Int32) -> UInt64 {
     UInt64(UInt32(bitPattern: first)) << 32 | UInt64(UInt32(bitPattern: second))
 }
 
-/// The volume ID of the file system an open descriptor lives on, from `ATTR_CMN_FSID`.
-func volumeID(of fd: Int32) -> UInt64? {
+/// The `ATTR_CMN_FSID` of an open descriptor, packed. This is the value `getattrlistbulk` lists for every
+/// entry and the one `Finding.fsid` carries (the safety gate re-reads it the same way).
+///
+/// It does not tell the System volume from the Data volume: both report the same value. Use
+/// ``volumeIdentity(of:)`` for the volume boundary.
+func attributeFSID(of fd: Int32) -> UInt64? {
     var list = attrlist()
     list.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
     list.commonattr = attrgroup_t(ATTR_CMN_FSID)
@@ -131,6 +145,15 @@ func volumeID(of fd: Int32) -> UInt64? {
     }
     guard result == 0, reply.length >= 12 else { return nil }
     return packFSID(reply.first, reply.second)
+}
+
+/// The identity of the file system an open descriptor lives on, from `fstatfs(2)`'s `f_fsid`, packed like
+/// ``packFSID(_:_:)``. Unlike `ATTR_CMN_FSID` it differs between the System volume and the Data volume,
+/// so it is what decides whether a walk may enter a folder (REQ-SCAN-03).
+func volumeIdentity(of fd: Int32) -> UInt64? {
+    var info = statfs()
+    guard fstatfs(fd, &info) == 0 else { return nil }
+    return packFSID(info.f_fsid.val.0, info.f_fsid.val.1)
 }
 
 /// Copies `parent`, adds `/`, then the NUL-terminated name. `parent` ends with NUL; so does the result.
@@ -264,14 +287,14 @@ struct DirectoryWalker {
             }
             return nil
         }
-        // A mount point shows the covered folder's volume in the parent's listing,
-        // so check the opened descriptor as well.
-        guard let volume = volumeID(of: childFD) else {
+        // Backstop for the mount status in the listing: the volume of the opened folder must be the root's.
+        // `f_fsid`, not `ATTR_CMN_FSID`, because the latter is the same on System and Data.
+        guard let volume = volumeIdentity(of: childFD) else {
             counters.otherErrors += 1
             close(childFD)
             return nil
         }
-        if volume != context.rootFSID {
+        if volume != context.rootVolume {
             counters.crossVolumeSkipped += 1
             close(childFD)
             return nil
@@ -370,7 +393,7 @@ struct DirectoryWalker {
         var reader = EntryReader(base: entry, length: length, offset: 4)
         guard let common = reader.take(UInt32.self),
             reader.take(UInt32.self) != nil,  // volume attributes
-            reader.take(UInt32.self) != nil,  // directory attributes
+            let directory = reader.take(UInt32.self),
             let file = reader.take(UInt32.self),
             let fork = reader.take(UInt32.self)
         else {
@@ -417,6 +440,14 @@ struct DirectoryWalker {
             counters.otherErrors += 1
             return
         }
+        var mountStatus: UInt32 = 0
+        if directory & attrgroup_t(ATTR_DIR_MOUNTSTATUS) != 0 {
+            guard let value = reader.take(UInt32.self) else {
+                counters.otherErrors += 1
+                return
+            }
+            mountStatus = value
+        }
         var linkCount: UInt32?
         if file & attrgroup_t(ATTR_FILE_LINKCOUNT) != 0 { linkCount = reader.take(UInt32.self) }
         var allocated: Int64?
@@ -438,6 +469,11 @@ struct DirectoryWalker {
         let name = entry.advanced(by: nameStart).assumingMemoryBound(to: CChar.self)
 
         if objectType == vnodeDirectory {
+            if mountStatus & (directoryIsMountPoint | directoryIsAutomountTrigger) != 0 {
+                // Never opened: a stale network mount or an autofs trigger can block the open for good.
+                counters.crossVolumeSkipped += 1
+                return
+            }
             frame.directories.append(
                 PendingDirectory(nameOffset: frame.names.count, id: id, flags: flags, modified: modified))
             frame.names.append(contentsOf: UnsafeBufferPointer(start: name, count: strnlen(name, nameBytes)))
@@ -516,27 +552,52 @@ struct DirectoryWalker {
     private mutating func parseFailedEntry(
         _ reader: inout EntryReader, common: UInt32, entry: UnsafeRawPointer, length: Int, frame: Frame
     ) {
-        guard let code = reader.take(UInt32.self) else {
+        guard let failed = FailedEntry.read(&reader, common: common, entry: entry, length: length) else {
+            // Without a name there is no path to report; count it so it is not lost.
             counters.otherErrors += 1
             return
         }
-        let errorCode = Int32(truncatingIfNeeded: code)
-        guard errorCode == EPERM || errorCode == EACCES else {
+        guard failed.code == EPERM || failed.code == EACCES else {
             counters.otherErrors += 1
             return
         }
+        let path = appendComponent(to: frame.path, name: failed.name, maxLength: failed.nameBytes)
+        let isDirectory = failed.isDirectory
+        context.denied.record { makeURL(fromPath: path, isDirectory: isDirectory) }
+    }
+}
+
+/// What an entry with `ATTR_CMN_ERROR` tells us: the error, the name and, when macOS says so, the kind.
+struct FailedEntry {
+    var code: Int32
+    var name: UnsafePointer<CChar>
+    var nameBytes: Int
+    /// True only when `ATTR_CMN_OBJTYPE` came back and says folder. An unknown kind counts as a file, so
+    /// the reported path never gets a trailing slash for something that may not be a folder.
+    var isDirectory: Bool
+
+    /// Reads the fields after the returned-attributes block. Layout: error, name reference, then
+    /// (when returned) fsid and object type. Nil when the entry has no readable name.
+    static func read(
+        _ reader: inout EntryReader, common: UInt32, entry: UnsafeRawPointer, length: Int
+    ) -> FailedEntry? {
+        guard common & attrgroup_t(ATTR_CMN_ERROR) != 0, let code = reader.take(UInt32.self) else { return nil }
         let nameFieldOffset = reader.offset
         guard common & attrgroup_t(ATTR_CMN_NAME) != 0,
             let nameOffset = reader.take(Int32.self), let nameLength = reader.take(UInt32.self),
             case let nameStart = nameFieldOffset + Int(nameOffset), nameLength >= 2,
             nameStart >= 0, nameStart + Int(nameLength) <= length
-        else {
-            // Without a name there is no path to report; count it so it is not lost.
-            counters.otherErrors += 1
-            return
+        else { return nil }
+        var isDirectory = false
+        var fieldsOK = true
+        if common & attrgroup_t(ATTR_CMN_FSID) != 0 {
+            fieldsOK = reader.take(Int32.self) != nil && reader.take(Int32.self) != nil
+        }
+        if fieldsOK, common & attrgroup_t(ATTR_CMN_OBJTYPE) != 0, let type = reader.take(UInt32.self) {
+            isDirectory = type == vnodeDirectory
         }
         let name = entry.advanced(by: nameStart).assumingMemoryBound(to: CChar.self)
-        let path = appendComponent(to: frame.path, name: name, maxLength: Int(nameLength))
-        context.denied.record { makeURL(fromPath: path, isDirectory: true) }
+        return FailedEntry(
+            code: Int32(truncatingIfNeeded: code), name: name, nameBytes: Int(nameLength), isDirectory: isDirectory)
     }
 }

@@ -19,6 +19,7 @@ struct HistoryLine: Codable {
         static let finish = "finish"
         static let undone = "undone"
         static let freed = "freed"
+        static let freeBegin = "freeBegin"
         static let command = "command"
     }
 
@@ -39,6 +40,8 @@ struct HistoryLine: Codable {
     // undone, freed
     var findingID: UUID?
     var path: URL?
+    // freeBegin
+    var trashPaths: [URL]?
     // command
     var command: CommandRecord?
 }

@@ -8,7 +8,8 @@ TruongCleaner: a native macOS disk cleaner. Swift 6.4, SwiftUI, macOS 26+,
 arm64, zero third-party dependencies. It explains "System Data" and frees
 space safely, with a System Settings look and Liquid Glass controls.
 
-Status: **planning done, Wave 0 (spikes) next.** Nothing is built yet.
+Status: **v1.0.0 released.** All v1.0 pages are built and reviewed. See
+`docs/HANDOFF.md` for open items.
 
 ## Read first, in order
 

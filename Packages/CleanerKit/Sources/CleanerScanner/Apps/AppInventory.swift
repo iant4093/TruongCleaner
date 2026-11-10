@@ -180,9 +180,10 @@ public struct AppSize: Sendable, Hashable {
     public let isPartial: Bool
 }
 
-/// Measures app sizes lazily, a few at a time, so that the walkers never use more than six threads.
+/// Measures app sizes lazily, a few at a time. Every walk takes its threads from the process-wide budget
+/// (`WorkerBudget.shared`), so the walkers never use more than `min(6, activeProcessorCount)` threads.
 ///
-/// Up to three walks run at once with two threads each. Ask for any number of sizes; they queue.
+/// Up to three walks run at once, each with up to two threads. Ask for any number of sizes; they queue.
 public actor AppSizer {
     private let maxWalks: Int
     private var running = 0
@@ -226,7 +227,7 @@ public actor AppSizer {
     private static func measure(_ app: URL) async -> AppSize {
         let id = AppFacts.id(for: app)
         let options = WalkOptions(maxWorkers: 2, totalsDepth: 0, topFilesCount: 0)
-        guard let result = try? await BulkWalker.walk(app, options: options), let root = result.nodes.first else {
+        guard let result = try? await SharedBudgetWalk.walk(app, options: options), let root = result.nodes.first else {
             return AppSize(appID: id, allocatedBytes: nil, privateBytes: nil, isPartial: true)
         }
         return AppSize(

@@ -104,14 +104,25 @@ public struct UndoService: Sendable {
     ///
     /// Only items from history with outcome `moved`, not put back or freed since, still at the
     /// recorded Trash location with the recorded file ID, and directly inside a Trash folder.
-    /// Nothing else in the Trash is touched. Each deletion writes a `freed` line; if that cannot be
-    /// written, the run stops.
+    /// Nothing else in the Trash is touched. Before the first delete it writes a `freeBegin` line
+    /// listing every Trash location it may delete; if that cannot be written, nothing is deleted.
+    /// Each deletion then writes a `freed` line; if that cannot be written, the run stops.
     public func freeSpaceNow(history: HistoryStore, executor: any ItemExecutor) async -> FreeSpaceReport {
         var report = FreeSpaceReport()
         let candidates: [TrashedItem]
         do {
             candidates = try await history.trashedItems()
         } catch {
+            return report
+        }
+        guard !candidates.isEmpty else { return report }
+        do {
+            try await history.recordFreeBegin(trashURLs: candidates.map(\.trashURL))
+        } catch {
+            for candidate in candidates {
+                report.skipped.append(
+                    .init(item: candidate.item, reason: "History is unavailable, so nothing was deleted"))
+            }
             return report
         }
         var historyWorks = true

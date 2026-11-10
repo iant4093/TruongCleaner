@@ -10,6 +10,9 @@ package struct SupervisedOutcome: Sendable {
     package var exitedNormally: Bool
     /// `true` when the process ran past its timeout and was stopped.
     package var timedOut: Bool
+    /// `true` when the calling task was cancelled and the process was stopped because of it
+    /// (only for runs started with `stopOnCancel`).
+    package var cancelled = false
     /// Set when the process could not be started.
     package var launchError: String?
     /// Standard output. With `mergeOutput`, standard error is in here too.
@@ -44,6 +47,10 @@ package enum SupervisedProcess {
     ///   - terminateGrace: How long it may take to end after `SIGTERM` before it is sent `SIGKILL`.
     ///   - mergeOutput: Send standard error into the same stream as standard output.
     ///   - keepLast: When set, only about the last `keepLast` bytes of each stream are kept in memory.
+    ///   - stopOnCancel: When the calling task is cancelled, stop the process the way a timeout does
+    ///     (`SIGTERM`, then `SIGKILL` after `terminateGrace`) and return with `cancelled == true`. Meant for
+    ///     read-only commands. Commands that change things keep running to the end, so they are not
+    ///     cut off half way.
     /// - Returns: How it ended. Never throws; a launch failure is in `launchError`.
     package static func run(
         _ executable: String,
@@ -52,13 +59,19 @@ package enum SupervisedProcess {
         timeout: Duration,
         terminateGrace: Duration,
         mergeOutput: Bool,
-        keepLast: Int? = nil
+        keepLast: Int? = nil,
+        stopOnCancel: Bool = false
     ) async -> SupervisedOutcome {
-        await withCheckedContinuation { continuation in
-            let run = Run(
-                executable, arguments, environment: environment, timeout: timeout,
-                terminateGrace: terminateGrace, mergeOutput: mergeOutput, keepLast: keepLast)
-            run.start(continuation)
+        let run = Run(
+            executable, arguments, environment: environment, timeout: timeout,
+            terminateGrace: terminateGrace, mergeOutput: mergeOutput, keepLast: keepLast)
+        guard stopOnCancel else {
+            return await withCheckedContinuation { run.start($0) }
+        }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { run.start($0) }
+        } onCancel: {
+            run.cancel()
         }
     }
 
@@ -83,6 +96,12 @@ package enum SupervisedProcess {
             var stderrOpen = true
             var exited = false
             var timedOut = false
+            /// The caller was cancelled (set by `cancel()`).
+            var cancelled = false
+            /// `process.run()` succeeded.
+            var launched = false
+            /// A stop (timeout or cancel) already sent `SIGTERM`.
+            var stopping = false
             var finished = false
             var continuation: CheckedContinuation<SupervisedOutcome, Never>?
             var timers: [DelayedItem] = []
@@ -120,7 +139,15 @@ package enum SupervisedProcess {
         }
 
         func start(_ continuation: CheckedContinuation<SupervisedOutcome, Never>) {
-            state.withLock { $0.continuation = continuation }
+            let cancelledBeforeStart = state.withLock { state -> Bool in
+                state.continuation = continuation
+                return state.cancelled
+            }
+            // Cancelled before the launch: do not start the process at all.
+            if cancelledBeforeStart {
+                finish(launchError: nil, neverLaunched: true)
+                return
+            }
             if errPipe == nil { state.withLock { $0.stderrOpen = false } }
 
             process.terminationHandler = { [self] _ in processEnded() }
@@ -136,7 +163,23 @@ package enum SupervisedProcess {
                 finish(launchError: error.localizedDescription)
                 return
             }
+            let cancelledWhileLaunching = state.withLock { state -> Bool in
+                state.launched = true
+                return state.cancelled
+            }
             schedule(after: SupervisedProcess.dispatchInterval(timeout)) { [self] in timeOut() }
+            if cancelledWhileLaunching { stop() }
+        }
+
+        /// Called when the calling task is cancelled. Stops the process, or prevents it from starting.
+        func cancel() {
+            let launched = state.withLock { state -> Bool? in
+                guard !state.cancelled, !state.finished else { return nil }
+                state.cancelled = true
+                return state.launched
+            }
+            // Not launched yet: `start` sees the flag. Launched: stop it now.
+            if launched == true { stop() }
         }
 
         // MARK: Events
@@ -180,9 +223,24 @@ package enum SupervisedProcess {
                 return true
             }
             guard running else { return }
+            stop()
+        }
+
+        /// `SIGTERM` now, `SIGKILL` after the grace period if the process is still there. Runs once.
+        private func stop() {
+            let proceed = state.withLock { state -> Bool in
+                guard !state.exited, !state.finished, !state.stopping else { return false }
+                state.stopping = true
+                return true
+            }
+            guard proceed else { return }
             process.terminate()
             schedule(after: SupervisedProcess.dispatchInterval(terminateGrace)) { [self] in
                 guard !state.withLock({ $0.exited || $0.finished }) else { return }
+                // `terminationHandler` runs after Foundation has reaped the child, so `exited` can lag.
+                // `isRunning` is updated at the reap: a process that is gone is never sent a signal,
+                // because its PID may already belong to another process.
+                guard process.isRunning else { return }
                 kill(process.processIdentifier, SIGKILL)
                 schedule(after: SupervisedProcess.killWait) { [self] in finish(launchError: nil) }
             }
@@ -207,7 +265,7 @@ package enum SupervisedProcess {
 
         /// Ends the run once: stops watching, drops the handlers that point back at this object, resumes the caller.
         /// The pipes close when this object is released; closing a handle a read source is using would raise.
-        private func finish(launchError: String?) {
+        private func finish(launchError: String?, neverLaunched: Bool = false) {
             let first = state.withLock { state -> Bool in
                 guard !state.finished else { return false }
                 state.finished = true
@@ -224,15 +282,17 @@ package enum SupervisedProcess {
                 state.continuation = nil
                 return taken
             }
-            let (timedOut, stdout, stderr) = state.withLock { ($0.timedOut, $0.stdout, $0.stderr) }
+            let (timedOut, cancelled, stdout, stderr) = state.withLock {
+                ($0.timedOut, $0.cancelled, $0.stdout, $0.stderr)
+            }
             var outcome = SupervisedOutcome(
-                terminationStatus: nil, exitedNormally: false, timedOut: timedOut,
+                terminationStatus: nil, exitedNormally: false, timedOut: timedOut, cancelled: cancelled,
                 launchError: launchError, stdout: stdout, stderr: stderr)
             for timer in timers { timer.item.cancel() }
             outPipe.fileHandleForReading.readabilityHandler = nil
             errPipe?.fileHandleForReading.readabilityHandler = nil
             process.terminationHandler = nil
-            if launchError == nil, !process.isRunning {
+            if launchError == nil, !neverLaunched, !process.isRunning {
                 outcome.terminationStatus = process.terminationStatus
                 outcome.exitedNormally = process.terminationReason == .exit
             }

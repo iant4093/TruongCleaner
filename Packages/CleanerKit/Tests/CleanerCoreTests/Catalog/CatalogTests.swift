@@ -68,7 +68,7 @@ struct CatalogTests {
         Expected(id: "dev.dockerDangling", category: .developer, tier: .safe),
         Expected(id: "dev.dockerImage", category: .developer, tier: .info),
         Expected(id: "dev.projectArtifacts", category: .developer, tier: .review),
-        Expected(id: "mail.downloads", category: .mail, tier: .safe),
+        Expected(id: "mail.downloads", category: .mail, tier: .review),
         Expected(id: "mail.caches", category: .mail, tier: .safe),
         Expected(id: "mail.store", category: .mail, tier: .info),
         Expected(id: "mail.messagesPreviews", category: .mail, tier: .safe),

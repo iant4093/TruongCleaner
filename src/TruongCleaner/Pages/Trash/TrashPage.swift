@@ -27,14 +27,20 @@ struct TrashPage: View {
             isPresented: confirming(.freeSpace),
             titleVisibility: .visible
         ) {
+            Button("Continue…", role: .destructive) { model.confirmation = .freeSpaceSecond }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(freeSpaceFirstMessage)
+        }
+        .confirmationDialog(
+            "Delete about \(ourBytesText) for good?",
+            isPresented: confirming(.freeSpaceSecond),
+            titleVisibility: .visible
+        ) {
             Button("Delete Permanently", role: .destructive) { run { await model.freeSpaceNow() } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(
-                "This deletes for good up to \(model.ours?.count ?? 0) items, about \(ourBytesText), "
-                    + "that TruongCleaner moved to the Trash. Everything else in the Trash stays. "
-                    + "This cannot be undone."
-            )
+            Text(freeSpaceSecondMessage)
         }
         .confirmationDialog(
             "Empty the Trash?",
@@ -57,7 +63,10 @@ struct TrashPage: View {
             Button("Empty Trash", role: .destructive) { run { await model.emptyTrash() } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Everything in the Trash is deleted and cannot be put back. Items that are in use are left alone.")
+            Text(
+                "Everything in the Trash is deleted and cannot be put back, including apps. "
+                    + "Plug-in bundles and items that are in use are left alone."
+            )
         }
     }
 
@@ -164,6 +173,20 @@ struct TrashPage: View {
 
     private var trashBytesText: String {
         ByteFormatter.string(model.snapshot?.allocatedBytes ?? 0)
+    }
+
+    private var freeSpaceFirstMessage: String {
+        let count = model.ours?.count ?? 0
+        let first = "This deletes up to \(count) items, about \(ourBytesText), that TruongCleaner moved to the Trash. "
+        return first + "Everything else in the Trash stays. TruongCleaner will ask once more."
+    }
+
+    private var freeSpaceSecondMessage: String {
+        let count = model.ours?.count ?? 0
+        let noun = count == 1 ? "item" : "items"
+        let first = "Up to \(count) \(noun), about \(ourBytesText), will be deleted. "
+        return first + "This includes items from earlier cleans, not only the latest one. "
+            + "They cannot be put back. Anything else in the Trash is left alone."
     }
 
     private var ourBytesText: String {

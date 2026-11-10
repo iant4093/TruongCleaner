@@ -54,7 +54,9 @@ jobs:
       - name: SwiftLint
         run: bash scripts/lint.sh
       - name: Deletion call sites stay inside CleanerActions
-        run: bash scripts/check-deletion-sites.sh
+        run: |
+          bash scripts/check-deletion-sites.sh --self-test
+          bash scripts/check-deletion-sites.sh
       - name: CleanerKit tests (Swift Testing)
         env:
           # 3-core shared runner: widen promptness checks (see Tests/Fixtures/TimingBudget.swift).
@@ -76,8 +78,6 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -104,12 +104,19 @@ jobs:
             exit 1
           fi
       - name: Sign, verify and package
-        run: bash scripts/package.sh
-      - name: Attest release artifacts
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        run: |
+          bash scripts/package.sh
+          app=build/ReleaseDerivedData/Build/Products/Release/TruongCleaner.app
+          mkdir -p build/release-meta
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist" > build/release-meta/VERSION
+          cp docs/RELEASE_NOTES.md build/release-meta/RELEASE_NOTES.md
+      - name: Upload release notes and version
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          subject-path: dist/*
+          name: release-meta
+          path: build/release-meta/
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload release candidate
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -126,9 +133,31 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  attest:
+    name: Build provenance
+    needs: [app]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The only job that can mint an OIDC token; it runs no repository scripts.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-candidate
+          path: dist
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
   release:
     name: Publish latest build
-    needs: [quality, logic, app]
+    # Build numbers are 1000 + this workflow's run number: never rename ci.yml.
+    needs: [quality, logic, app, attest]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -139,6 +168,10 @@ jobs:
         with:
           name: release-candidate
           path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-meta
+          path: meta
       - name: Publish verified build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -151,8 +184,14 @@ jobs:
             echo 'A newer commit is on main; its successful build will publish instead.'
             exit 0
           fi
+          # The tag stays build-N: the in-app updater reads the build number from it.
           tag="build-$GITHUB_RUN_NUMBER"
           build="$((1000 + GITHUB_RUN_NUMBER))"
+          version="$(tr -cd '0-9.' < ../meta/VERSION)"
+          {
+            cat ../meta/RELEASE_NOTES.md
+            printf '\n\n---\nBuild %s from %s. Checksums, matching crash symbols and build provenance are attached (verify with: gh attestation verify TruongCleaner.zip --repo %s).\n' "$build" "$GITHUB_SHA" "$GH_REPO"
+          } > ../notes.md
           if gh release view "$tag" --json isDraft --jq .isDraft > existing-draft 2>/dev/null; then
             if [ "$(cat existing-draft)" = false ]; then
               echo 'This run already published its release.'
@@ -160,8 +199,8 @@ jobs:
             fi
           else
             gh release create "$tag" --draft --target "$GITHUB_SHA" \
-              --title "TruongCleaner · Build $build" \
-              --notes "Built from $GITHUB_SHA after SwiftLint, safety checks, package tests, Xcode static analysis and workflow security checks. Install with: curl -fsSL https://github.com/$GH_REPO/releases/latest/download/install.sh | sh. The app is ad-hoc signed (not notarized). If you use the DMG instead, open the app once, then choose System Settings > Privacy & Security > Open Anyway. Checksums and matching crash symbols are attached."
+              --title "TruongCleaner $version · Build $build" \
+              --notes-file ../notes.md
           fi
           gh release upload "$tag" TruongCleaner.dmg TruongCleaner.zip install.sh TruongCleaner.dSYM.zip SHA256SUMS --clobber
           gh release edit "$tag" --draft=false --latest

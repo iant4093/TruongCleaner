@@ -128,8 +128,7 @@ enum RecommendationBuilder {
                 spokenText: "\(title) uses \(SpokenSize.string(largest.bytes))",
                 buttonTitle: "Review…",
                 buttonLabel: "Review \(title)",
-                // TODO(4.5): open `.developer` once the Developer page exists. Smart Clean lists the same item.
-                action: .open(.smartClean)
+                action: .open(.developer)
             ))
         }
 

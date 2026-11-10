@@ -355,3 +355,43 @@ back `nil` (unknown, item kept) instead of `false`, and a date check allowed onl
 `CI=true` (`Tests/Fixtures/LivenessExpectation.swift`); a `true` still fails
 everywhere; date tolerance 120 s. Merged main: lint 0 violations in 179 files,
 deletion-site PASS, package tests PASS, Release 4.8 MB.
+
+### S6 and S7 (recorded 2026-11-09)
+
+- S6 CI proof: the Xcode project and package build headless on GitHub's `xcode-27`
+  image; 30+ runs, first Latest release build-1 on 2026-11-07. Xcode not pinned
+  (image default 27.1; Ian's Mac 27.0); no source warnings on either.
+- S7 install: files installed with `install.sh` over `curl` carry no
+  `com.apple.quarantine` (only `com.apple.provenance`), so Gatekeeper does not
+  prompt; `spctl -a` rejects the ad-hoc app, as expected, but Gatekeeper only
+  checks quarantined files (release review, 2026-11-09). Ian installed and ran the
+  app this way (hand check, 2026-11-09).
+
+### Wave 9: v1.0 code review fixes (2026-11-09)
+
+Four independent Opus reviews (`docs/reviews/`) found, as BLOCKER / MAJOR / MINOR:
+safety 1 / 8 / 8, scanner 0 / 4 / 8, app 0 / 2 / 9, release 2 / 2 / 12. Briefs
+9.1–9.4 fixed all of them except safety #3 (signed update manifest), which waits
+on Ian's decision (task 9.6).
+
+Main fixes: the gate checks file identity last and acts only on the URL it
+verified; owner apps are matched by argv (`KERN_PROCARGS2`) and Adobe by bundle-ID
+prefix; macOS installers must pass `anchor apple` and have an `InstallAssistant`
+bundle ID; project build folders are skipped when `git ls-files` says they are
+tracked (any git failure = skip); `mail.downloads` is Review with an
+edited-after-download check; the protected list grows (Photos libraries anywhere,
+Apple group containers, more agents, password managers and wallets); the volume
+boundary uses `fstatfs` fsid and skips mount points; walks report "incomplete";
+one shared thread budget, including the gate's age walk; owner commands get exactly
+`PATH`, `HOME`, `LANG`. In the app, actions are blocked while busy, Quit asks during
+a clean, Free Space Now asks twice, and the updater rolls back cleanly. `install.sh`
+restores the old app on failure and allows HTTPS only. Uninstall leftovers holding
+documents, VM or disk images, more than 1 GB, or unreadable parts are never
+pre-selected (Docker's nested `Docker.raw` included). `MARKETING_VERSION` is 1.0.0.
+
+Orchestrator verification on merged `main`: lint 0 violations in 185 files;
+deletion-site check and `--self-test` PASS; package tests PASS both locally and
+the CI way (`CI=true TC_TIMING_SLACK=10 TC_TEST_PARALLEL=0`), 889 tests in 66
+suites (285 + 250 + 354); `build.sh all` PASS, Release 4.9 MB; `package.sh` PASS
+with `CFBundleShortVersionString` 1.0.0. Screenshots of Overview, Smart Clean,
+System Data and Applications show no regressions.

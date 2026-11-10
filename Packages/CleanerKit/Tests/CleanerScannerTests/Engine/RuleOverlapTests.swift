@@ -60,11 +60,11 @@ struct RuleOverlapTests {
         // Same name prefix, not the same folder.
         try fixture.file("Library/Caches/com.apple.dt.Xcode2/x")
         try fixture.file("Library/Caches/com.apple.dt/x")
-        try fixture.file("Library/Caches/Yarn/x")
+        try fixture.file("Library/Caches/Unrelated/x")
 
         let (_, report) = await fixture.scan([broad, xcode])
 
-        #expect(names(fixture.result("test.caches", in: report)) == ["Yarn", "com.apple.dt", "com.apple.dt.Xcode2"])
+        #expect(names(fixture.result("test.caches", in: report)) == ["Unrelated", "com.apple.dt", "com.apple.dt.Xcode2"])
         #expect(fixture.result("test.caches", in: report)?.skippedCounts[.coveredByOtherRule] == 1)
     }
 
@@ -72,12 +72,12 @@ struct RuleOverlapTests {
     func withoutTheSpecificRuleTheBroadRuleOffersEverything() async throws {
         let fixture = try EngineFixture()
         defer { fixture.remove() }
-        try fixture.file("Library/Caches/com.apple.dt.Xcode/x")
+        try fixture.file("Library/Caches/com.example.One/x")
         try fixture.file("Library/Caches/com.other.App/z")
 
         let (_, report) = await fixture.scan([broad])
 
-        #expect(names(fixture.result("test.caches", in: report)) == ["com.apple.dt.Xcode", "com.other.App"])
+        #expect(names(fixture.result("test.caches", in: report)) == ["com.example.One", "com.other.App"])
         #expect(fixture.result("test.caches", in: report)?.skippedCounts[.coveredByOtherRule] == nil)
     }
 
@@ -86,13 +86,13 @@ struct RuleOverlapTests {
         let fixture = try EngineFixture()
         defer { fixture.remove() }
         let both = makeRule(
-            "test.both", roots: [["Library", "Caches"], ["Library", "Caches", "com.apple.dt.Xcode"]])
-        try fixture.file("Library/Caches/com.apple.dt.Xcode/x")
+            "test.both", roots: [["Library", "Caches"], ["Library", "Caches", "com.example.One"]])
+        try fixture.file("Library/Caches/com.example.One/x")
 
         let (_, report) = await fixture.scan([both])
 
         // The folder is offered from the first root and its child from the second. Each is kept by the rule itself.
-        #expect(names(fixture.result("test.both", in: report)) == ["com.apple.dt.Xcode", "x"])
+        #expect(names(fixture.result("test.both", in: report)) == ["com.example.One", "x"])
         #expect(fixture.result("test.both", in: report)?.skippedCounts[.coveredByOtherRule] == nil)
     }
 
@@ -100,12 +100,12 @@ struct RuleOverlapTests {
     func aRootThatIsNotThereCoversNothing() async throws {
         let fixture = try EngineFixture()
         defer { fixture.remove() }
-        let missing = makeRule("test.missing", roots: [["Library", "Caches", "com.apple.dt.Xcode", "DerivedData"]])
-        try fixture.file("Library/Caches/com.apple.dt.Xcode/x")
+        let missing = makeRule("test.missing", roots: [["Library", "Caches", "com.example.One", "DerivedData"]])
+        try fixture.file("Library/Caches/com.example.One/x")
 
         let (_, report) = await fixture.scan([broad, missing])
 
-        #expect(names(fixture.result("test.caches", in: report)) == ["com.apple.dt.Xcode"])
+        #expect(names(fixture.result("test.caches", in: report)) == ["com.example.One"])
         #expect(fixture.result("test.missing", in: report)?.missingRoots.isEmpty == false)
     }
 
@@ -114,12 +114,12 @@ struct RuleOverlapTests {
         let fixture = try EngineFixture()
         defer { fixture.remove() }
         let info = makeRule(
-            "test.info", tier: .info, roots: [["Library", "Caches", "com.apple.dt.Xcode"]], match: .measureOnly)
-        try fixture.file("Library/Caches/com.apple.dt.Xcode/x", pages: 2)
+            "test.info", tier: .info, roots: [["Library", "Caches", "com.example.One"]], match: .measureOnly)
+        try fixture.file("Library/Caches/com.example.One/x", pages: 2)
 
         let (_, report) = await fixture.scan([broad, info])
 
-        #expect(names(fixture.result("test.caches", in: report)) == ["com.apple.dt.Xcode"])
+        #expect(names(fixture.result("test.caches", in: report)) == ["com.example.One"])
         #expect(fixture.result("test.info", in: report)?.measuredBytes == fixture.bytes(2))
     }
 
@@ -149,6 +149,49 @@ struct RuleOverlapTests {
         #expect(report.duplicatesDropped == 0)
     }
 
+    @Test
+    func aDisabledCatalogRuleStillKeepsItsFolderOutOfUserCaches() async throws {
+        // Safety review 5: the scan holds only enabled rules. With `dev.yarn` and the others off, the
+        // broad `user.caches` must not start offering their folders, with weaker owner guards.
+        let fixture = try EngineFixture()
+        defer { fixture.remove() }
+        try fixture.file("Library/Caches/Yarn/v6/a", pages: 2)
+        try fixture.file("Library/Caches/CocoaPods/b", pages: 1)
+        try fixture.file("Library/Caches/com.google.GoogleDrive/c", pages: 1)
+        try fixture.file("Library/Caches/com.example.Other/d", pages: 1)
+        let userCaches = try #require(Catalog.all.first { $0.id == "user.caches" })
+
+        let (_, report) = await fixture.scan([userCaches])
+
+        let result = fixture.result("user.caches", in: report)
+        #expect(names(result) == ["com.example.Other"])
+        #expect(result?.skippedCounts[.coveredByOtherRule] == 3)
+        #expect(result?.measuredBytes == fixture.bytes(1))
+    }
+
+    @Test
+    func planningStopsResolvingRootsOnceCancelled() async throws {
+        // Scanner review 5: planning reads the file system, so Stop must reach it.
+        let fixture = try EngineFixture()
+        defer { fixture.remove() }
+        try fixture.file("Library/Caches/com.example.One/x")
+        let request = ScanRequest(
+            rules: [broad], environment: fixture.environment, userExclusions: [],
+            maxConcurrentRoots: 2, workersPerRoot: 4)
+        let task = Task { () -> (queued: Bool, partial: Bool) in
+            while !Task.isCancelled { await Task.yield() }
+            var plan = RunPlan(
+                request: request, clock: ContinuousClock(), largestFirst: true, deliverEarly: true, emit: { _ in })
+            plan.flush()
+            return (plan.hasQueuedUnits, plan.results.first?.partial ?? false)
+        }
+        task.cancel()
+        let planned = await task.value
+
+        #expect(planned.queued == false)
+        #expect(planned.partial == true)
+    }
+
     // MARK: - RootOverlap on its own (no file system)
 
     private func overlap(_ roots: [[String]]) -> RootOverlap {
@@ -163,7 +206,7 @@ struct RuleOverlapTests {
     func overlapComparesWholeComponentsAndIgnoresCase() {
         let index = overlap([["/h/Library/Caches"], ["/h/Library/Caches/com.apple.dt.Xcode"]])
         func covered(_ path: String, by rule: Int) -> Bool {
-            index.isCovered(URL(filePath: path, directoryHint: .isDirectory), byRuleOtherThan: rule)
+            index.isCovered(URL(filePath: path, directoryHint: .isDirectory), byRuleOtherThan: "r\(rule)")
         }
         // Equal and above.
         #expect(covered("/h/Library/Caches/com.apple.dt.Xcode", by: 0))
@@ -180,6 +223,6 @@ struct RuleOverlapTests {
     @Test
     func overlapComposesDecomposedNames() {
         let index = overlap([["/h/Caches/caf\u{E9}"]])
-        #expect(index.isCovered(URL(filePath: "/h/Caches/cafe\u{301}", directoryHint: .isDirectory), byRuleOtherThan: 7))
+        #expect(index.isCovered(URL(filePath: "/h/Caches/cafe\u{301}", directoryHint: .isDirectory), byRuleOtherThan: "other"))
     }
 }
