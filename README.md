@@ -27,8 +27,8 @@ Intelligence assets and more. It cleans what is safe to clean, moves items to
 the Trash by default so you can put them back, and shows Apple's own fix for the
 parts no app may touch.
 
-> **Status:** pre-release. Every push to `main` that passes CI publishes a build.
-> The app works end to end; hand testing on more Macs is still in progress.
+> **Version 1.0.** Every push to `main` that passes CI publishes a new build, which
+> installed copies can install from Settings.
 
 ## Screenshots
 
@@ -89,7 +89,7 @@ Release build on macOS 27, 1100 × 720 window, Light appearance.
 
 - SwiftUI with the System Settings look and Liquid Glass controls
 - No third-party code, no telemetry; one optional daily check for a newer build, and updates install from Settings with a checksum and signature check
-- A full scan of `~/Library` (1.5 million files) takes about 7 seconds with about 12 MB of memory on an Apple silicon Mac (`docs/EVIDENCE.md`, S1)
+- The scanner reads about 120,000 files a second, 3.8 times as fast as `du`, using under 20 MB of memory on an M3 Max (`docs/EVIDENCE.md`, task 2.6)
 
 ## Install
 
@@ -99,8 +99,7 @@ curl -fsSL https://github.com/iant4093/TruongCleaner/releases/latest/download/in
 
 The script downloads the latest build, checks it against `SHA256SUMS` from the
 same release, and installs it in Applications. Files fetched with `curl` are not
-quarantined, so the app should open without the Gatekeeper prompt (still being
-confirmed by hand on macOS 27).
+quarantined, so the app opens without the Gatekeeper prompt (checked on macOS 27).
 
 To use the DMG instead: open it, drag TruongCleaner to Applications, open it once,
 then choose **System Settings > Privacy & Security > Open Anyway**. Release builds
@@ -112,6 +111,8 @@ it in System Settings > Privacy & Security > Full Disk Access. Because builds ar
 ad-hoc signed, macOS may ask again after an update.
 
 Download only from this repository's [Releases](https://github.com/iant4093/TruongCleaner/releases) page.
+To check that a download was built by this repository's CI, run
+`gh attestation verify TruongCleaner.zip --repo iant4093/TruongCleaner`.
 
 ## Tech stack
 
@@ -145,9 +146,10 @@ bash scripts/test.sh package          # Swift Testing for CleanerKit
 ```
 
 Tests build their own folder trees under `build/` (and attach a small disk image
-for Trash tests). They never touch your real files. Every safety rule in
-`.kiro/steering/safety.md` has a test that fails without it, including regression
-tests for data-loss incidents reported in other cleaners.
+for Trash tests). They never touch your real files. The app safety rules in
+`.kiro/steering/safety.md` (rules 1–16) are covered by tests or by the
+deletion-site check, including regression tests for data-loss incidents reported
+in other cleaners.
 
 ## CI and releases
 

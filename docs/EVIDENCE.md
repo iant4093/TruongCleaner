@@ -355,3 +355,14 @@ back `nil` (unknown, item kept) instead of `false`, and a date check allowed onl
 `CI=true` (`Tests/Fixtures/LivenessExpectation.swift`); a `true` still fails
 everywhere; date tolerance 120 s. Merged main: lint 0 violations in 179 files,
 deletion-site PASS, package tests PASS, Release 4.8 MB.
+
+### S6 and S7 (recorded 2026-11-09)
+
+- S6 CI proof: the Xcode project and package build headless on GitHub's `xcode-27`
+  image; 30+ runs, first Latest release build-1 on 2026-11-07. Xcode not pinned
+  (image default 27.1; Ian's Mac 27.0); no source warnings on either.
+- S7 install: files installed with `install.sh` over `curl` carry no
+  `com.apple.quarantine` (only `com.apple.provenance`), so Gatekeeper does not
+  prompt; `spctl -a` rejects the ad-hoc app, as expected, but Gatekeeper only
+  checks quarantined files (release review, 2026-11-09). Ian installed and ran the
+  app this way (hand check, 2026-11-09).

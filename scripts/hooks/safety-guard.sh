@@ -34,14 +34,18 @@ patterns=(
   'osascript'
   'diskutil[[:space:]]+(erase|apfs[[:space:]]+delete|apfs[[:space:]]+purge)'
   '(^|[;&|[:space:]])purge([[:space:]]|$)'
+  'find[[:space:]][^;&|]*-delete'
+  'xargs[[:space:]][^;&|]*rm([[:space:]]|$)'
 )
 for p in "${patterns[@]}"; do
   if printf '%s' "$cmd" | grep -Eq -- "$p"; then deny "matches '$p'"; fi
 done
 
 # 2. rm with a recursive flag is allowed only on build/ or spikes/*/out/ inside the repo.
-if printf '%s' "$cmd" | grep -Eq '(^|[;&|[:space:]])rm[[:space:]]+-[a-zA-Z]*[rR]'; then
-  targets="$(printf '%s' "$cmd" | grep -Eo '(^|[;&|[:space:]])rm[[:space:]]+[^;&|]*' | sed -E 's/^[;&|[:space:]]*rm[[:space:]]+//')"
+# Any rm (also /bin/rm) whose flags include r/R in any position, or --recursive.
+rm_word='(^|[;&|[:space:]])(/bin/)?rm[[:space:]]'
+if printf '%s' "$cmd" | grep -Eq "${rm_word}([^;&|]*[[:space:]])?(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]|$)"; then
+  targets="$(printf '%s' "$cmd" | grep -Eo "${rm_word}[^;&|]*" | sed -E 's#^[;&|[:space:]]*(/bin/)?rm[[:space:]]+##')"
   for t in $targets; do
     case "$t" in
       -*) continue ;;
