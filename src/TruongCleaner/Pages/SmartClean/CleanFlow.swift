@@ -40,7 +40,7 @@ struct CleanFlow: ViewModifier {
                 Text(confirmMessage)
             }
             .confirmationDialog(
-                "Delete \(ByteFormatter.string(summary.bytes)) permanently?",
+                "Delete about \(ByteFormatter.string(summary.bytes)) permanently?",
                 isPresented: $showPermanentConfirm,
                 titleVisibility: .visible
             ) {

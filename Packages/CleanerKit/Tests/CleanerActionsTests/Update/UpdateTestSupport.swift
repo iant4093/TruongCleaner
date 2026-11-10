@@ -155,17 +155,30 @@ struct FakeFetcher: UpdateFetcher {
 }
 
 /// Real file moves, except the listed calls (1-based) fail. A failing second move can leave a
-/// half-copied folder at the destination first.
+/// half-copied folder at the destination first, as the cross-volume copy fallback does.
 struct FlakyFileOperations: UpdateFileOperations {
     var failingMoves: Set<Int>
     var leavePartialCopy = false
+    /// The partial copy has an `Info.plist` with this bundle identifier.
+    var partialBundleID: String?
+    /// The failure is reported as a failed cross-volume copy (`UpdateCopyFallbackError`).
+    var copyFallback = false
     private let calls = OSAllocatedUnfairLock(initialState: 0)
+    private let removals = OSAllocatedUnfairLock<[URL]>(initialState: [])
     private let real = SystemUpdateFileOperations()
 
-    init(failingMoves: Set<Int>, leavePartialCopy: Bool = false) {
+    init(
+        failingMoves: Set<Int>, leavePartialCopy: Bool = false, partialBundleID: String? = nil,
+        copyFallback: Bool = false
+    ) {
         self.failingMoves = failingMoves
         self.leavePartialCopy = leavePartialCopy
+        self.partialBundleID = partialBundleID
+        self.copyFallback = copyFallback
     }
+
+    /// Every URL passed to `removePartialCopy`.
+    var removed: [URL] { removals.withLock { $0 } }
 
     func move(_ source: URL, to destination: URL) throws {
         let number = calls.withLock { count -> Int in
@@ -175,15 +188,27 @@ struct FlakyFileOperations: UpdateFileOperations {
         if failingMoves.contains(number) {
             if leavePartialCopy {
                 try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+                if let partialBundleID {
+                    let plist = destination.appending(path: "Contents/Info.plist")
+                    try FileManager.default.createDirectory(
+                        at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try PropertyListSerialization.data(
+                        fromPropertyList: ["CFBundleIdentifier": partialBundleID], format: .xml, options: 0
+                    ).write(to: plist)
+                }
             }
-            throw CocoaError(.fileWriteNoPermission)
+            let failure = CocoaError(.fileWriteNoPermission)
+            throw copyFallback ? UpdateCopyFallbackError(underlying: failure) : failure
         }
         try real.move(source, to: destination)
     }
 
     func itemExists(at url: URL) -> Bool { real.itemExists(at: url) }
 
-    func removePartialCopy(at url: URL) throws { try real.removePartialCopy(at: url) }
+    func removePartialCopy(at url: URL) throws {
+        removals.withLock { $0.append(url) }
+        try real.removePartialCopy(at: url)
+    }
 }
 
 /// Stands in for the Trash: records moves and does not touch any file.

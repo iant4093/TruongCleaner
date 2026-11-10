@@ -7,8 +7,33 @@ public protocol UpdateFileOperations: Sendable {
     func move(_ source: URL, to destination: URL) throws
     /// Whether anything (including a broken link) exists at `url`.
     func itemExists(at url: URL) -> Bool
-    /// Removes a half-copied bundle left at the app's path by a failed move.
+    /// Removes a half-copied bundle left at the app's path by a failed cross-volume copy.
     func removePartialCopy(at url: URL) throws
+    /// The `CFBundleIdentifier` of the bundle at `url`, read from its `Info.plist`, or `nil`.
+    func bundleIdentifier(at url: URL) -> String?
+}
+
+extension UpdateFileOperations {
+    /// Reads `Contents/Info.plist` directly. `Bundle(url:)` caches by path, which hides a swap.
+    public func bundleIdentifier(at url: URL) -> String? {
+        let plist = NSDictionary(contentsOf: url.appending(path: "Contents/Info.plist")) as? [String: Any]
+        return plist?["CFBundleIdentifier"] as? String
+    }
+}
+
+/// A cross-volume move (`rename` gave `EXDEV`) fell back to copying and the copy failed, so a
+/// half-copied bundle may sit at the destination. A plain `rename` failure writes nothing there.
+public struct UpdateCopyFallbackError: Error, LocalizedError, Sendable {
+    /// The error the copy raised.
+    public let underlying: any Error
+
+    /// Creates the error.
+    public init(underlying: any Error) {
+        self.underlying = underlying
+    }
+
+    /// The underlying error's text.
+    public var errorDescription: String? { underlying.localizedDescription }
 }
 
 /// Moves with `rename(2)`, which is atomic on one volume, and falls back to `FileManager.moveItem`
@@ -25,7 +50,11 @@ public struct SystemUpdateFileOperations: UpdateFileOperations {
         guard errno == EXDEV else {
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
         }
-        try FileManager.default.moveItem(at: source, to: destination)
+        do {
+            try FileManager.default.moveItem(at: source, to: destination)
+        } catch {
+            throw UpdateCopyFallbackError(underlying: error)
+        }
     }
 
     /// `lstat` succeeds.
@@ -44,6 +73,9 @@ public struct SystemUpdateFileOperations: UpdateFileOperations {
 public struct UpdateInstaller: Sendable {
     /// Start of the name the old bundle gets while the update runs.
     public static let oldBundlePrefix = ".TruongCleaner-old-"
+    /// Start of the name something unexpected at the app's path gets when it is moved aside.
+    /// It has no `.app` suffix, so ``UpdateCleanup`` never touches it.
+    public static let unexpectedItemPrefix = ".TruongCleaner-unexpected-"
 
     private let files: any UpdateFileOperations
     private let allowedParents: [String]
@@ -88,11 +120,15 @@ public struct UpdateInstaller: Sendable {
     /// 1. Renames the running bundle to `.TruongCleaner-old-<uuid>.app` in the same folder
     ///    (macOS allows renaming a running app).
     /// 2. Moves `new` to the running app's path.
-    /// 3. If step 2 fails, removes whatever it left at that path and renames the old bundle back.
+    /// 3. If step 2 fails, clears the app's path and renames the old bundle back. Whatever is
+    ///    there is deleted only when the failure came from the cross-volume copy fallback and the
+    ///    bundle at that path has our bundle identifier. Anything else is moved aside to
+    ///    `.TruongCleaner-unexpected-<uuid>`, never deleted.
     ///
     /// - Returns: Where the old bundle is now. ``UpdateCleanup`` trashes it on the next launch.
     /// - Throws: ``UpdateError``. After ``UpdateError/swapFailed(_:restoredOldApp:)`` the
-    ///   `restoredOldApp` flag says whether the old version is back.
+    ///   `restoredOldApp` flag says whether the old version is back. When it is not, the message
+    ///   names the hidden path that holds the old app.
     public func swap(running: URL, new: URL) throws -> URL {
         if let blocker = blocker(for: running) { throw blocker }
         var info = stat()
@@ -103,6 +139,7 @@ public struct UpdateInstaller: Sendable {
         let parent = running.deletingLastPathComponent()
         let aside = parent.appending(
             path: "\(Self.oldBundlePrefix)\(UUID().uuidString).app", directoryHint: .isDirectory)
+        let ourIdentifier = files.bundleIdentifier(at: running)
 
         do {
             try files.move(running, to: aside)
@@ -112,16 +149,33 @@ public struct UpdateInstaller: Sendable {
         do {
             try files.move(new, to: running)
         } catch {
-            // Whatever is at the app's path now was written by the failed move above: the original
-            // was renamed away in step 1, so it is a partial copy of the new app.
-            if files.itemExists(at: running) { try? files.removePartialCopy(at: running) }
+            let reason = error.localizedDescription
+            clearAppPath(
+                running, parent: parent, ourIdentifier: ourIdentifier,
+                copyFallbackFailed: error is UpdateCopyFallbackError)
             do {
                 try files.move(aside, to: running)
-            } catch {
-                throw UpdateError.swapFailed(error.localizedDescription, restoredOldApp: false)
+            } catch let rollbackError {
+                let hidden = UpdateWorkspace.unixPath(aside)
+                throw UpdateError.swapFailed(
+                    "\(reason). Putting the old version back also failed (\(rollbackError.localizedDescription)); "
+                        + "it is saved as \(hidden)",
+                    restoredOldApp: false)
             }
-            throw UpdateError.swapFailed(error.localizedDescription, restoredOldApp: true)
+            throw UpdateError.swapFailed(reason, restoredOldApp: true)
         }
         return aside
+    }
+
+    /// Makes room for the old bundle after a failed move of the new one.
+    private func clearAppPath(_ running: URL, parent: URL, ourIdentifier: String?, copyFallbackFailed: Bool) {
+        guard files.itemExists(at: running) else { return }
+        if copyFallbackFailed, let ourIdentifier, files.bundleIdentifier(at: running) == ourIdentifier {
+            // The original was renamed away in step 1, so this is the partial copy of our new app.
+            try? files.removePartialCopy(at: running)
+        }
+        guard files.itemExists(at: running) else { return }
+        let side = parent.appending(path: "\(Self.unexpectedItemPrefix)\(UUID().uuidString)", directoryHint: .isDirectory)
+        try? files.move(running, to: side)
     }
 }

@@ -18,6 +18,7 @@ struct CleanResultSheet: View {
     let model: SmartCleanModel
     let report: CleanReport
     @State private var showFreeSpaceConfirm = false
+    @State private var showFreeSpaceSecondConfirm = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,15 +43,29 @@ struct CleanResultSheet: View {
             isPresented: $showFreeSpaceConfirm,
             titleVisibility: .visible
         ) {
-            Button("Delete Items", role: .destructive) {
+            Button("Continue…", role: .destructive) { showFreeSpaceSecondConfirm = true }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This deletes every item TruongCleaner moved to the Trash that is still there, "
+                    + "from this clean and earlier ones. Anything else in the Trash is left alone. "
+                    + "TruongCleaner will ask once more."
+            )
+        }
+        .confirmationDialog(
+            "Delete \(ourItemsText) for good?",
+            isPresented: $showFreeSpaceSecondConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Permanently", role: .destructive) {
                 Task { await model.freeSpaceNow() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This deletes every item TruongCleaner moved to the Trash that is still there, "
-                    + "from this clean and earlier ones. It cannot be undone. "
-                    + "Anything else in the Trash is left alone."
+                "Up to \(ourItemsText) that TruongCleaner moved to the Trash will be deleted, "
+                    + "including items from earlier cleans, not only this one. "
+                    + "They cannot be put back. Anything else in the Trash is left alone."
             )
         }
     }
@@ -207,9 +222,13 @@ struct CleanResultSheet: View {
     // MARK: Buttons
 
     private var canPutBack: Bool {
-        report.items.contains { item in
-            if case .moved = item.outcome { !model.restoredFindingIDs.contains(item.findingID) } else { false }
-        }
+        report.items.contains { model.canPutBack($0) }
+    }
+
+    /// "12 items, about 3 GB", from the history read just before the first dialog opened.
+    private var ourItemsText: String {
+        guard let items = model.ourTrashItems else { return "the items" }
+        return "\(itemsText(items.count)), about \(ByteFormatter.string(items.bytes))"
     }
 
     private var buttons: some View {
@@ -227,9 +246,14 @@ struct CleanResultSheet: View {
                 .disabled(model.isWorking || !canPutBack)
                 .help("Move the items from this clean back to where they were")
 
-                Button("Free Space Now…") { showFreeSpaceConfirm = true }
-                    .disabled(model.isWorking)
-                    .help("Delete the items TruongCleaner moved to the Trash")
+                Button("Free Space Now…") {
+                    Task {
+                        // Read what would be deleted first, so both dialogs can name the count and size.
+                        if await model.readOurTrashItems() != nil { showFreeSpaceConfirm = true }
+                    }
+                }
+                .disabled(model.isWorking)
+                .help("Delete the items TruongCleaner moved to the Trash")
             }
             Button("Done") { model.dismissResult() }
                 .keyboardShortcut(.defaultAction)

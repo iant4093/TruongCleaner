@@ -77,6 +77,14 @@ final class SmartCleanModel {
     /// Findings put back from the Trash since the clean on screen finished.
     private(set) var restoredFindingIDs: Set<UUID> = []
 
+    /// Findings deleted for good by Free Space Now since the clean on screen finished. They can no
+    /// longer be put back.
+    private(set) var freedFindingIDs: Set<UUID> = []
+
+    /// What Free Space Now would delete: the items history says TruongCleaner moved to the Trash,
+    /// from this clean and earlier ones. `nil` when history could not be read.
+    private(set) var ourTrashItems: OurTrashItems?
+
     @ObservationIgnored private(set) var scanRules: [Rule] = []
     @ObservationIgnored private var results: [String: SmartCleanRow] = [:]
     @ObservationIgnored private var finishedRuleIDs: Set<String> = []
@@ -142,10 +150,12 @@ final class SmartCleanModel {
 
     // MARK: Results
 
-    /// Visible rows grouped by category, in catalog order. Empty rows are left out.
+    /// Visible rows grouped by category, in catalog order. Empty rows are left out. A rule turned off
+    /// in Settings after the scan drops out, so it is neither shown nor cleaned ("Rules that are off
+    /// are skipped by scans and cleans").
     var sections: [SmartCleanSection] {
         _ = revision
-        let rows = scanRules.compactMap { results[$0.id] }.filter(\.isVisible)
+        let rows = scanRules.compactMap { results[$0.id] }.filter(\.isVisible).filter { settings.isEnabled($0.rule) }
         return CleanerCore.Category.allCases.compactMap { category in
             let inCategory = rows.filter { $0.rule.category == category }
             return inCategory.isEmpty ? nil : SmartCleanSection(category: category, rows: inCategory)
@@ -332,6 +342,7 @@ final class SmartCleanModel {
         accessChangedSinceScan = false
         followUpNotes = []
         restoredFindingIDs = []
+        freedFindingIDs = []
         revision += 1
     }
 
@@ -476,7 +487,7 @@ final class SmartCleanModel {
         defer { isWorking = false }
         var restored = 0
         var refused: [String] = []
-        for item in report.items where !restoredFindingIDs.contains(item.findingID) {
+        for item in report.items where !restoredFindingIDs.contains(item.findingID) && !freedFindingIDs.contains(item.findingID) {
             guard case .moved = item.outcome else { continue }
             switch await putBack(item) {
             case .restored:
@@ -495,13 +506,39 @@ final class SmartCleanModel {
         followUpNotes.append(contentsOf: notes)
     }
 
+    /// Whether this clean's moved item can still be put back: it was not put back or deleted since.
+    func canPutBack(_ item: ItemReport) -> Bool {
+        guard case .moved = item.outcome else { return false }
+        return !restoredFindingIDs.contains(item.findingID) && !freedFindingIDs.contains(item.findingID)
+    }
+
+    /// Reads how many items, and how many bytes, Free Space Now would delete, for its confirmation.
+    ///
+    /// - Returns: The items, or `nil` when history could not be read or nothing of ours is in the Trash.
+    ///   In that case a note says why and no dialog should open.
+    func readOurTrashItems() async -> OurTrashItems? {
+        guard !isWorking else { return nil }
+        let items = await TrashWork.ourItems(history: history)
+        ourTrashItems = items
+        guard let items else {
+            followUpNotes.append("Free Space Now did not start, because History could not be read.")
+            return nil
+        }
+        guard items.count > 0 else {
+            followUpNotes.append("Nothing TruongCleaner moved is left in the Trash.")
+            return nil
+        }
+        return items
+    }
+
     /// Deletes for good everything TruongCleaner moved to the Trash that is still there with the
-    /// same file ID. Nothing else in the Trash is touched.
+    /// same file ID. Nothing else in the Trash is touched. The page asks twice before calling this.
     func freeSpaceNow() async {
         guard !isWorking else { return }
         isWorking = true
         defer { isWorking = false }
         let report = await Self.performFreeSpace(undo: undo, history: history)
+        freedFindingIDs.formUnion(report.freed.map(\.findingID))
         var notes = [
             "Deleted \(itemsText(report.freed.count)) from the Trash, "
                 + "about \(ByteFormatter.string(report.freedBytes)) freed."

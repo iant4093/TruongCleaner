@@ -144,7 +144,8 @@ struct OverviewPage: View {
             .font(.callout)
         } else if let totals = categories.totals, totals.totalNeedsAccess > 0 {
             Label(
-                "Some folders need Full Disk Access, so their sizes are missing from the bar.",
+                "Some folders need Full Disk Access, so their sizes are missing from the bar. "
+                    + "Their size is counted in System Data.",
                 systemImage: "lock.fill"
             )
             .font(.callout)

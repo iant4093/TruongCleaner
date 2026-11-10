@@ -97,7 +97,7 @@ struct UpdateCleanupTests {
 
     // MARK: Update folders
 
-    @Test func removeLeftovers_deletesOnlyStaleUpdateFolders() async throws {
+    @Test func removeLeftovers_trashesOnlyStaleUpdateFolders() async throws {
         try await withUpdateTree { tree in
             try tree.addDirectory("Applications")
             try tree.addDirectory("tmp")
@@ -112,13 +112,18 @@ struct UpdateCleanupTests {
             let longAgo = Date.now.addingTimeInterval(-3 * hour)
             for name in [stale, notUUID, other] { try tree.setModified("tmp/\(name)", to: longAgo) }
 
-            let report = await UpdateCleanup(executor: RecordingExecutor()).removeLeftovers(
+            let executor = RecordingExecutor()
+
+            let report = await UpdateCleanup(executor: executor).removeLeftovers(
                 in: tree.url(for: "Applications"), bundleIdentifier: FixtureApp.ourID,
                 temporaryDirectory: tree.url(for: "tmp"), minimumAge: hour)
 
-            #expect(report.removedFolders.map(UpdateWorkspace.unixPath) == [UpdateWorkspace.unixPath(tree.url(for: "tmp/\(stale)"))])
-            #expect(!exists(staleFile))
-            #expect(!exists(tree.url(for: "tmp/\(stale)")))
+            let expected = [UpdateWorkspace.unixPath(tree.url(for: "tmp/\(stale)"))]
+            #expect(report.removedFolders.map(UpdateWorkspace.unixPath) == expected)
+            // Moved to the Trash through the executor, never deleted.
+            #expect(executor.trashed.map(UpdateWorkspace.unixPath) == expected)
+            #expect(executor.deletedPermanently.isEmpty)
+            #expect(exists(staleFile))
             #expect(exists(tree.url(for: "tmp/\(fresh)")))
             #expect(exists(tree.url(for: "tmp/\(notUUID)")))
             #expect(exists(tree.url(for: "tmp/\(other)")))
@@ -144,6 +149,23 @@ struct UpdateCleanupTests {
             #expect(report.removedFolders.isEmpty)
             #expect(exists(link))
             #expect(exists(precious))
+        }
+    }
+
+    @Test func removeLeftovers_keepsAStaleFolderWhenTheTrashFails() async throws {
+        try await withUpdateTree { tree in
+            try tree.addDirectory("Applications")
+            try tree.addDirectory("tmp")
+            let stale = "TruongCleanerUpdate-\(UUID().uuidString)"
+            let file = try tree.addFile("tmp/\(stale)/TruongCleaner.zip", size: 10)
+            try tree.setModified("tmp/\(stale)", to: Date.now.addingTimeInterval(-3 * hour))
+
+            let report = await UpdateCleanup(executor: FailingExecutor()).removeLeftovers(
+                in: tree.url(for: "Applications"), bundleIdentifier: FixtureApp.ourID,
+                temporaryDirectory: tree.url(for: "tmp"), minimumAge: hour)
+
+            #expect(report.removedFolders.isEmpty)
+            #expect(exists(file))
         }
     }
 

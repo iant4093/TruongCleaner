@@ -15,7 +15,8 @@ public enum HistoryError: Error, Sendable, Equatable {
 /// The record of every clean: a JSON Lines file, one object per line.
 ///
 /// Line types: `begin` (the plan, written before the first item), `item` (one per item, written
-/// as soon as its outcome is known), `finish`, `undone` and `freed`, plus `command` (one owner-command
+/// as soon as its outcome is known), `finish`, `undone` and `freed`, plus `freeBegin` (the Trash
+/// locations Free Space Now is about to delete, written before the first delete) and `command` (one owner-command
 /// run, written after it ends). Files from older versions have no `command` lines and read the same.
 /// Every line is flushed to disk
 /// before the call returns, so a crash leaves a readable file. A truncated last line is skipped
@@ -88,6 +89,12 @@ public actor HistoryStore {
                 type: HistoryLine.Kind.freed, cleanID: cleanID, at: Date(), findingID: findingID, path: trashURL))
     }
 
+    /// Writes a `freeBegin` line: Free Space Now is about to delete these Trash items for good.
+    /// Call before the first delete.
+    public func recordFreeBegin(trashURLs: [URL], id: UUID = UUID()) throws {
+        try append(HistoryLine(type: HistoryLine.Kind.freeBegin, cleanID: id, at: Date(), trashPaths: trashURLs))
+    }
+
     /// Writes a `command` line: one owner-command run and what it did.
     ///
     /// - Parameters:
@@ -134,6 +141,11 @@ public actor HistoryStore {
             }
         }
         return order.compactMap { builders[$0]?.summary }.sorted { $0.startedAt > $1.startedAt }
+    }
+
+    /// The Trash locations of every `freeBegin` line, in the order they were written.
+    public func freeBeginPaths() throws -> [[URL]] {
+        try readLines().compactMap { $0.type == HistoryLine.Kind.freeBegin ? $0.trashPaths : nil }
     }
 
     /// The `item` lines of one clean, in the order they were written.

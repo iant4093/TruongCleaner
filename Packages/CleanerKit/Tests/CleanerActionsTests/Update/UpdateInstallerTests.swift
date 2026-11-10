@@ -68,18 +68,60 @@ struct UpdateInstallerTests {
         }
     }
 
-    @Test func swap_removesAHalfCopiedAppBeforeRollingBack() async throws {
+    @Test func swap_removesOurHalfCopiedAppAfterAFailedCopyFallback() async throws {
         try await withUpdateTree { tree in
             let setup = try makeSetup(tree)
-            let installer = UpdateInstaller(
-                files: FlakyFileOperations(failingMoves: [2], leavePartialCopy: true),
-                allowedParents: [setup.applications])
+            let files = FlakyFileOperations(
+                failingMoves: [2], leavePartialCopy: true, partialBundleID: FixtureApp.ourID, copyFallback: true)
+            let installer = UpdateInstaller(files: files, allowedParents: [setup.applications])
 
             #expect(throws: UpdateError.self) {
                 try installer.swap(running: setup.running, new: setup.new)
             }
             #expect(FixtureApp.build(of: setup.running) == 1000)
             #expect(names(in: setup.applications) == ["TruongCleaner.app"])
+            #expect(files.removed.count == 1)
+        }
+    }
+
+    @Test func swap_movesAsideAHalfCopyWhoseBundleIDIsNotOurs() async throws {
+        try await withUpdateTree { tree in
+            let setup = try makeSetup(tree)
+            for bundleID in [nil, "com.example.Other"] as [String?] {
+                let files = FlakyFileOperations(
+                    failingMoves: [2], leavePartialCopy: true, partialBundleID: bundleID, copyFallback: true)
+                let installer = UpdateInstaller(files: files, allowedParents: [setup.applications])
+
+                #expect(throws: UpdateError.self) {
+                    try installer.swap(running: setup.running, new: setup.new)
+                }
+                #expect(files.removed.isEmpty)
+                #expect(FixtureApp.build(of: setup.running) == 1000)
+            }
+            // Two unexpected items were kept under hidden names, none was deleted.
+            let extras = names(in: setup.applications).subtracting(["TruongCleaner.app"])
+            #expect(extras.count == 2)
+            #expect(extras.allSatisfy { $0.hasPrefix(UpdateInstaller.unexpectedItemPrefix) })
+            #expect(!extras.contains(where: UpdateCleanup.isOldBundleName))
+        }
+    }
+
+    @Test func swap_neverDeletesWhatIsAtTheAppPathAfterAPlainRenameFailure() async throws {
+        try await withUpdateTree { tree in
+            let setup = try makeSetup(tree)
+            // Not a copy fallback: even a bundle with our ID at the path is moved aside, not removed.
+            let files = FlakyFileOperations(
+                failingMoves: [2], leavePartialCopy: true, partialBundleID: FixtureApp.ourID)
+            let installer = UpdateInstaller(files: files, allowedParents: [setup.applications])
+
+            #expect(throws: UpdateError.self) {
+                try installer.swap(running: setup.running, new: setup.new)
+            }
+            #expect(files.removed.isEmpty)
+            #expect(FixtureApp.build(of: setup.running) == 1000)
+            let extras = names(in: setup.applications).subtracting(["TruongCleaner.app"])
+            #expect(extras.count == 1)
+            #expect(extras.allSatisfy { $0.hasPrefix(UpdateInstaller.unexpectedItemPrefix) })
         }
     }
 
@@ -114,10 +156,12 @@ struct UpdateInstallerTests {
                 return
             }
             #expect(!restored)
-            // The old app is still on disk, under its aside name.
+            // The old app is still on disk, under its aside name, and the message names that path.
             let leftovers = names(in: setup.applications)
             #expect(leftovers.count == 1)
             #expect(leftovers.allSatisfy(UpdateCleanup.isOldBundleName))
+            let hidden = try #require(leftovers.first)
+            #expect(error.errorDescription?.contains(hidden) == true)
         }
     }
 

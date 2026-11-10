@@ -198,6 +198,9 @@ final class HistoryModel {
     var selection: UUID?
     /// Items of the selected clean.
     private(set) var rows: [HistoryItemRow] = []
+    /// The clean that `rows` belong to. It differs from `selection` for a moment after the selection
+    /// changes, while the new items load; Put Back is off then, so a row is never sent with another clean's ID.
+    private(set) var rowsCleanID: UUID?
     /// Why a Put Back was refused, by item. Shown in the Outcome column; the button stays off.
     private(set) var refusals: [UUID: String] = [:]
     /// True while the history file is being read for the first time.
@@ -228,12 +231,14 @@ final class HistoryModel {
 
     /// Items of the selected clean that Put Back can try.
     var puttableRows: [HistoryItemRow] {
-        rows.filter { $0.putBackState == .available && refusals[$0.id] == nil }
+        guard rowsCleanID == selection else { return [] }
+        return rows.filter { $0.putBackState == .available && refusals[$0.id] == nil }
     }
 
     /// Why this item's button is off, or nil when it is on.
     func disabledReason(for row: HistoryItemRow) -> String? {
         if let reason = row.putBackDisabledReason { return reason }
+        if rowsCleanID != selection { return "Reading the items of this clean" }
         if let refusal = refusals[row.id] { return refusal }
         if isPuttingBack { return "Another Put Back is running" }
         return nil
@@ -275,15 +280,18 @@ final class HistoryModel {
     func loadItems() async {
         guard let id = selection else {
             rows = []
+            rowsCleanID = nil
             return
         }
         do {
             let loaded = try await HistoryWork.loadItems(of: id, from: services.history)
             guard !Task.isCancelled, id == selection else { return }
             rows = loaded
+            rowsCleanID = id
         } catch {
             guard !Task.isCancelled else { return }
             rows = []
+            rowsCleanID = nil
             message = HistoryMessage(text: "The items of this clean could not be read.", isError: true)
         }
     }
@@ -299,7 +307,8 @@ final class HistoryModel {
     }
 
     private func putBack(_ targets: [HistoryItemRow]) async {
-        guard !isPuttingBack, let cleanID = selection, !targets.isEmpty else { return }
+        // Use the clean the rows were read for, and only while it is still the selected one.
+        guard !isPuttingBack, let cleanID = rowsCleanID, cleanID == selection, !targets.isEmpty else { return }
         isPuttingBack = true
         defer { isPuttingBack = false }
         message = nil

@@ -119,6 +119,10 @@ final class ApplicationsModel {
     @ObservationIgnored private var extraRow: ApplicationRow?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var detailTask: Task<Void, Never>?
+    /// Identifies the newest load and detail read. A cancelled older task finishes later and must
+    /// not clear the handle or the flags of the newer one (the same pattern as `SpaceLensModel`).
+    @ObservationIgnored private var loadToken = UUID()
+    @ObservationIgnored private var detailToken = UUID()
     @ObservationIgnored private var cleanTask: Task<Void, Never>?
 
     private let settings: SettingsStore
@@ -237,7 +241,9 @@ final class ApplicationsModel {
         loadTask?.cancel()
         notice = nil
         isLoading = true
-        loadTask = Task { await runLoad() }
+        let token = UUID()
+        loadToken = token
+        loadTask = Task { await runLoad(token: token) }
     }
 
     /// Stops reading and measuring.
@@ -250,12 +256,12 @@ final class ApplicationsModel {
         if !hasLoaded, !isLoading { reload() }
     }
 
-    private func runLoad() async {
-        defer { loadTask = nil }
+    private func runLoad(token: UUID) async {
+        defer { if token == loadToken { loadTask = nil } }
         let context = Self.makeContext()
         let found = await AppInventory.scan(folders: context.applicationFolders)
-        guard !Task.isCancelled else {
-            isLoading = false
+        guard !Task.isCancelled, token == loadToken else {
+            if token == loadToken { isLoading = false }
             return
         }
         inventory = found
@@ -270,13 +276,13 @@ final class ApplicationsModel {
         } else if selectedID != nil {
             select(selectedID, force: true)
         }
-        await measureSizes()
+        await measureSizes(token: token)
     }
 
     /// Measures every app a few at a time. Results reach the list at most ten times a second.
-    private func measureSizes() async {
+    private func measureSizes(token: UUID) async {
         isMeasuring = true
-        defer { isMeasuring = false }
+        defer { if token == loadToken { isMeasuring = false } }
         let sizer = self.sizer
         let urls = rows.map(\.facts.url)
         var pending: [String: AppSize] = [:]
@@ -299,7 +305,7 @@ final class ApplicationsModel {
                 if ContinuousClock.now - lastFlush >= .milliseconds(100) { flush() }
             }
         }
-        if !Task.isCancelled { flush() }
+        if !Task.isCancelled, token == loadToken { flush() }
     }
 
     /// Re-checks which apps are running, without reading any folder. Call when the app becomes active.
@@ -365,11 +371,13 @@ final class ApplicationsModel {
         }
         detail = .loading
         let facts = row.facts
-        detailTask = Task { await loadDetail(facts) }
+        let token = UUID()
+        detailToken = token
+        detailTask = Task { await loadDetail(facts, token: token) }
     }
 
-    private func loadDetail(_ facts: AppFacts) async {
-        defer { detailTask = nil }
+    private func loadDetail(_ facts: AppFacts, token: UUID) async {
+        defer { if token == detailToken { detailTask = nil } }
         let context = Self.makeContext()
         let isRunning = Self.isRunning(facts, in: RunningBundleIDs.current())
         let result = await LeftoverFinder.find(
