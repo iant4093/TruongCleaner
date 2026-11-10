@@ -198,6 +198,8 @@ struct CatalogSpecificTests {
             "browser.chromiumModels", "apps.adobeMediaCache",
             "dev.xcodeArchives", "dev.simDevices", "dev.simRuntimes", "dev.goModules", "dev.gradle", "dev.maven",
             "dev.projectArtifacts", "ios.backups", "installers.macOS", "installers.downloads",
+            // Review since 9.1: a saved edit of an attachment may be the only copy.
+            "mail.downloads",
         ])
     }
 

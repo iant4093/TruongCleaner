@@ -25,7 +25,7 @@ import Foundation
 /// `err FD` for it too), and it is treated like `EPERM`. Treating it as a failure would make every
 /// answer unknown for as long as such a process exists.
 enum ProcessInspector {
-    /// A snapshot that read fewer than this share of the listed processes is not trusted.
+    /// A snapshot that read fewer than this share of the current user's processes is not trusted.
     static let minimumCoverage = 0.5
 
     /// How many passes read a process that failed. Descriptors and processes come and go,
@@ -74,13 +74,18 @@ enum ProcessInspector {
     ///   - excluded: Processes to ignore.
     ///   - listProcesses: Gives the process IDs to read. Tests replace it; the default lists them all.
     /// - Returns: The snapshot. If the process list cannot be read, or fewer than half of the
-    ///   listed processes could be read, it answers `nil` to every question.
+    ///   current user's processes could be read, it answers `nil` to every question.
     static func capture(
         excluding excluded: Set<Int32>, listProcesses: () -> [Int32]? = { allPIDs() }
     ) -> OpenFilesSnapshot {
         guard let listed = listProcesses() else { return .failed }
         let pids = listed.filter { $0 > 0 && !excluded.contains($0) }
         guard !pids.isEmpty else { return .failed }
+
+        // Only the user's own processes can hold the user's files open without root, so only they
+        // count toward coverage. A process whose owner cannot be read counts as the user's.
+        let mine = Set(pids.filter { ProcessTable.belongsToCurrentUser($0) != false })
+        guard !mine.isEmpty else { return .failed }
 
         var accumulator = Accumulator()
         var readable = 0
@@ -93,7 +98,7 @@ enum ProcessInspector {
             for pid in pending {
                 switch inspect(pid, into: &accumulator) {
                 case .read:
-                    readable += 1
+                    if mine.contains(pid) { readable += 1 }
                     unsettled[pid] = nil
                 case .gone, .hidden:
                     unsettled[pid] = nil
@@ -109,9 +114,9 @@ enum ProcessInspector {
             if pending.isEmpty { break }
         }
         let incomplete = unsettled.values.contains(.failed)
-        // Processes that are hidden or gone cannot vouch for anything. If most of the table was
-        // out of reach, "nothing is open" would mean "nothing I could see".
-        guard Double(readable) >= minimumCoverage * Double(pids.count) else { return .failed }
+        // Processes that are hidden or gone cannot vouch for anything. If most of the user's own
+        // processes were out of reach, "nothing is open" would mean "nothing I could see".
+        guard Double(readable) >= minimumCoverage * Double(mine.count) else { return .failed }
         return OpenFilesSnapshot(
             prefixes: accumulator.prefixes, identities: accumulator.identities,
             completeness: incomplete ? .incomplete : .complete)

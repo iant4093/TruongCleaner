@@ -17,6 +17,8 @@ public protocol RunningAppsProvider: Sendable {
     ///
     /// The gate resolves `OwnerSpec.childNameAsBundleID` and `.rootSegmentAsBundleID` into
     /// `.bundleID` before asking, so providers normally see only `.bundleID` and `.processName`.
+    /// A `.bundleID` that ends in `*` is a prefix (`com.adobe.PremierePro.*`). The gate answers it
+    /// itself from the running processes and does not pass it to the provider.
     func state(of owner: OwnerSpec, for item: URL) async -> OwnerState
 }
 
@@ -46,6 +48,10 @@ public struct GateContext: Sendable {
     public var rootOwners: [URL: [OwnerSpec]]
     /// True only for rule `installers.macOS`: the whole `.app` may be removed, never anything inside it.
     public var allowWholeBundle: Bool
+    /// Reads who signed an app. Used only for `installers.macOS`. Tests replace it.
+    public var appSignature: any AppSignatureChecker
+    /// Asks git whether a path is tracked. Used only for `dev.projectArtifacts`. Tests replace it.
+    public var git: any GitTrackingProbe
 
     /// Creates a context.
     public init(
@@ -55,7 +61,9 @@ public struct GateContext: Sendable {
         runningApps: any RunningAppsProvider,
         openFiles: any OpenFilesProvider,
         allowWholeBundle: Bool = false,
-        rootOwners: [URL: [OwnerSpec]] = [:]
+        rootOwners: [URL: [OwnerSpec]] = [:],
+        appSignature: any AppSignatureChecker = SecurityAppSignatureChecker(),
+        git: any GitTrackingProbe = GitCommandProbe()
     ) {
         self.environment = environment
         self.policy = policy
@@ -64,5 +72,7 @@ public struct GateContext: Sendable {
         self.openFiles = openFiles
         self.allowWholeBundle = allowWholeBundle
         self.rootOwners = rootOwners
+        self.appSignature = appSignature
+        self.git = git
     }
 }

@@ -249,7 +249,7 @@ struct CleanerTests {
                 }
             }
             #expect(verdicts[busy.finding.id] == .deny(.openFiles))
-            #expect(verdicts[fine.finding.id] == .allow)
+            #expect(verdicts[fine.finding.id]?.isAllowed == true)
             #expect(verdicts[outside.finding.id] == .deny(.outsideRoots))
         }
     }

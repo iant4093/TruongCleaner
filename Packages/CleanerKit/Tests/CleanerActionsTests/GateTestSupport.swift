@@ -33,13 +33,14 @@ struct GateHarness {
     /// A rule. Only the fields the gate reads matter. `roots` is a placeholder unless a test needs
     /// root specs (owners, wildcard segments); the gate takes concrete roots from the context.
     func rule(
+        id: String = "test.rule",
         tier: Tier = .safe,
         action: Action = .trash,
         guards: Guards = Guards(),
         roots: [RootSpec] = [RootSpec(base: .home, components: ["Library", "Caches"])]
     ) -> Rule {
         Rule(
-            id: "test.rule",
+            id: id,
             category: .caches,
             tier: tier,
             roots: roots,
@@ -58,7 +59,9 @@ struct GateHarness {
         apps: any RunningAppsProvider = FakeApps(),
         files: any OpenFilesProvider = FakeFiles(answer: false),
         allowWholeBundle: Bool = false,
-        rootOwners: [URL: [OwnerSpec]] = [:]
+        rootOwners: [URL: [OwnerSpec]] = [:],
+        appSignature: any AppSignatureChecker = FakeSignature(answer: false),
+        git: any GitTrackingProbe = FakeGit(answer: .untracked)
     ) -> GateContext {
         GateContext(
             environment: environment,
@@ -67,7 +70,9 @@ struct GateHarness {
             runningApps: apps,
             openFiles: files,
             allowWholeBundle: allowWholeBundle,
-            rootOwners: rootOwners
+            rootOwners: rootOwners,
+            appSignature: appSignature,
+            git: git
         )
     }
 
@@ -148,6 +153,39 @@ struct FakeFiles: OpenFilesProvider {
     var answer: Bool?
 
     func hasOpenFiles(under url: URL) async -> Bool? { answer }
+}
+
+/// Returns a fixed signature answer.
+struct FakeSignature: AppSignatureChecker {
+    var answer: Bool?
+
+    func isAppleSigned(_ app: URL) -> Bool? { answer }
+}
+
+/// Returns a fixed git answer and remembers what it was asked.
+final class FakeGit: GitTrackingProbe, Sendable {
+    private let asked = Mutex<[(path: String, repository: URL)]>([])
+    private let answer: GitTracking
+
+    init(answer: GitTracking) { self.answer = answer }
+
+    var questions: [(path: String, repository: URL)] { asked.withLock { $0 } }
+
+    func tracking(of relativePath: String, inRepository repository: URL) async -> GitTracking {
+        asked.withLock { $0.append((relativePath, repository)) }
+        return answer
+    }
+}
+
+/// Runs an action when asked about an owner, then answers `notRunning`. Used to change the file
+/// system in the middle of a gate run.
+struct ActingApps: RunningAppsProvider {
+    var action: @Sendable () -> Void
+
+    func state(of owner: OwnerSpec, for item: URL) async -> OwnerState {
+        action()
+        return .notRunning
+    }
 }
 
 /// Sets BSD flags, bypassing `FixtureTree.setFlags`, which refuses immutable flags.

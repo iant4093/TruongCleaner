@@ -1,4 +1,5 @@
 import CleanerCore
+import CleanerScanner
 import Foundation
 
 /// Runs a clean: asks `SafetyGate` about each item, moves or deletes the allowed ones, and writes
@@ -144,12 +145,16 @@ public struct Cleaner: Sendable {
     }
 
     /// Asks the gate, then acts. Returns what happened.
+    ///
+    /// The executor gets the URL the gate verified (the item's real parent plus its name), never the
+    /// path as scanned. Just before acting, the identity of that URL is read again.
     private func handle(_ item: PlannedItem, in plan: CleanPlan, openFiles: any OpenFilesProvider) async -> ItemOutcome {
+        let url: URL
         switch await decide(item, in: plan, openFiles: openFiles) {
         case .deny(let reason): return .skipped(reason)
-        case .allow: break
+        case .allow(let verified): url = verified
         }
-        let url = item.finding.url
+        if let reason = Self.recheck(url, against: item.finding) { return .skipped(reason) }
         do {
             switch plan.mode {
             case .trash:
@@ -160,7 +165,12 @@ public struct Cleaner: Sendable {
                 }
                 return .moved(to: destination)
             case .permanent:
-                try await executor.deletePermanently(url)
+                let before = await Self.entryCount(of: url)
+                do {
+                    try await executor.deletePermanently(url)
+                } catch {
+                    return await Self.permanentFailure(error, url: url, countBefore: before)
+                }
                 if Self.stillInPlace(url, fileID: item.finding.fileID) { return .failed("The item is still in place") }
                 return .deleted
             }
@@ -193,6 +203,51 @@ public struct Cleaner: Sendable {
         if case .ownerCommand = action { return .notAFileAction }
         if case .none = action { return .noAction }
         return .permanentOnly
+    }
+
+    /// Reads the identity of the verified URL again, right before the executor acts, and compares both
+    /// parts (`fsid` and `fileID`) with the scan (`safety.md` rule 6).
+    ///
+    /// - Returns: Why the item must be kept, or nil when it is still the entry the scan saw.
+    static func recheck(_ url: URL, against finding: Finding) -> DenyReason? {
+        do {
+            let current = try GateSystem.identity(of: url)
+            if current.fsid != finding.fsid || current.fileID != finding.fileID { return .changedSinceScan }
+            return nil
+        } catch let error as SysError {
+            return error.isMissing ? .missing : .probeFailed(error.description)
+        } catch {
+            return .probeFailed("unexpected error")
+        }
+    }
+
+    /// Longest the entry count may take.
+    private static let countLimit: Duration = .seconds(5)
+
+    /// Number of entries in a folder (nil for a file, a link, or when the walk was cut short or failed).
+    private static func entryCount(of url: URL) async -> Int? {
+        guard let info = try? GateSystem.lstatInfo(of: url), GateSystem.isDirectory(info) else { return nil }
+        let options = WalkOptions(maxWorkers: 2, totalsDepth: 0, topFilesCount: 0, limit: countLimit)
+        guard let result = try? await BulkWalker.walk(url, options: options),
+            !result.partial, result.deniedCount == 0, result.otherErrors == 0
+        else { return nil }
+        return result.nodes.first?.fileCount
+    }
+
+    /// The outcome of a permanent delete that threw. When a folder is still there but has lost entries,
+    /// the delete got partway, and the result says so (`safety.md` rule 12).
+    private static func permanentFailure(_ error: any Error, url: URL, countBefore: Int?) async -> ItemOutcome {
+        let message = error.localizedDescription
+        guard !isGone(url), let info = try? GateSystem.lstatInfo(of: url), GateSystem.isDirectory(info) else {
+            return .failed(message)
+        }
+        guard let before = countBefore, let after = await entryCount(of: url) else {
+            return .failed("Partly deleted, or not at all; the folder is still there. \(message)")
+        }
+        if after < before {
+            return .failed("Partly deleted: \(before - after) of \(before) items were removed before an error stopped it. \(message)")
+        }
+        return .failed(message)
     }
 
     /// Whether the original path still holds the same entry the scan saw.

@@ -17,7 +17,7 @@ struct SafetyRulesTests {
         try await withHarness { h in
             let file = try h.tree.addFile("home/Library/Caches/a.txt", size: 100)
             let verdict = try await h.verdict(for: file)
-            #expect(verdict == .allow)
+            #expect(verdict.isAllowed)
         }
     }
 
@@ -46,7 +46,7 @@ struct SafetyRulesTests {
             _ = try h.tree.addDirectory("home/Library/Caches/a")
             let given = URL(filePath: h.caches.path(percentEncoded: false) + "/a/../b/x.txt")
             let verdict = try await h.verdict(for: file, given: given)
-            #expect(verdict == .allow)
+            #expect(verdict.isAllowed)
         }
     }
 
@@ -112,7 +112,7 @@ struct SafetyRulesTests {
             let context = h.context(roots: [reports])
             #expect(try await h.verdict(for: reports, scanRoot: logs, context: context) == .deny(.isRoot))
             let child = h.tree.url(for: "home/Library/Logs/DiagnosticReports/old.ips")
-            #expect(try await h.verdict(for: child, scanRoot: logs, context: context) == .allow)
+            #expect(try await h.verdict(for: child, scanRoot: logs, context: context).isAllowed)
         }
     }
 
@@ -155,7 +155,7 @@ struct SafetyRulesTests {
             let target = try h.tree.addFile("home/Documents/keep.txt", size: 10)
             let link = try h.tree.addSymlink("home/Library/Caches/ln", destination: target)
             let verdict = try await h.verdict(for: link)
-            #expect(verdict == .allow)
+            #expect(verdict.isAllowed)
             // The link's own identity was checked, not the target's.
             let finding = try await h.scanned(link)
             #expect(finding.isSymlink)
@@ -237,7 +237,7 @@ struct SafetyRulesTests {
         try await withHarness { h in
             let file = try h.tree.addFile("home/Library/Caches/a.txt")
             let rule = h.rule(guards: Guards(owners: [.bundleID("com.example.Tool"), .processName("tool")]))
-            #expect(try await h.verdict(for: file, rule: rule) == .allow)
+            #expect(try await h.verdict(for: file, rule: rule).isAllowed)
         }
     }
 
@@ -259,7 +259,7 @@ struct SafetyRulesTests {
             let apps = RecordingApps(answer: .running)
             let rule = h.rule(guards: Guards(owners: [.childNameAsBundleID(stripSuffix: nil)]))
             let verdict = try await h.verdict(for: item, rule: rule, context: h.context(apps: apps))
-            #expect(verdict == .allow)
+            #expect(verdict.isAllowed)
             #expect(apps.owners.isEmpty)
         }
     }
@@ -282,7 +282,7 @@ struct SafetyRulesTests {
             #expect(try await h.verdict(for: item, rule: rule, context: context) == .deny(.ownerUnknown))
             // Nothing is remembered: the next ask gets a fresh answer.
             let open = h.context(apps: FakeApps(fallback: .notRunning))
-            #expect(try await h.verdict(for: item, rule: rule, context: open) == .allow)
+            #expect(try await h.verdict(for: item, rule: rule, context: open).isAllowed)
         }
     }
 
@@ -317,7 +317,7 @@ struct SafetyRulesTests {
             let braveVerdict = try await h.verdict(
                 for: brave.deletingLastPathComponent(), scanRoot: braveRoot, rule: rule, context: context)
             #expect(chromeVerdict == .deny(.ownerOpen("com.google.Chrome")))
-            #expect(braveVerdict == .allow)
+            #expect(braveVerdict.isAllowed)
         }
     }
 
@@ -329,7 +329,7 @@ struct SafetyRulesTests {
             let context = h.context(
                 roots: [chromeRoot, braveRoot],
                 apps: FakeApps(answers: [.bundleID("com.brave.Browser"): .running]))
-            #expect(try await h.verdict(for: chrome, scanRoot: chromeRoot, rule: rule, context: context) == .allow)
+            #expect(try await h.verdict(for: chrome, scanRoot: chromeRoot, rule: rule, context: context).isAllowed)
             #expect(
                 try await h.verdict(for: brave, scanRoot: braveRoot, rule: rule, context: context)
                     == .deny(.ownerOpen("com.brave.Browser")))
@@ -363,7 +363,7 @@ struct SafetyRulesTests {
                 roots: [chromeRoot, braveRoot],
                 apps: FakeApps(answers: [.bundleID("com.google.Chrome"): .running]),
                 rootOwners: [braveRoot: [.bundleID("com.google.Chrome")]])
-            #expect(try await h.verdict(for: item, scanRoot: chromeRoot, rule: rule, context: other) == .allow)
+            #expect(try await h.verdict(for: item, scanRoot: chromeRoot, rule: rule, context: other).isAllowed)
         }
     }
 
@@ -395,7 +395,7 @@ struct SafetyRulesTests {
 
             // The app is closed: the same item is allowed.
             let quiet = h.context(roots: [root], apps: FakeApps(fallback: .notRunning))
-            #expect(try await h.verdict(for: item, scanRoot: root, rule: rule, context: quiet) == .allow)
+            #expect(try await h.verdict(for: item, scanRoot: root, rule: rule, context: quiet).isAllowed)
         }
     }
 
@@ -408,7 +408,7 @@ struct SafetyRulesTests {
             let apps = RecordingApps(answer: .running)
             let verdict = try await h.verdict(
                 for: item, scanRoot: root, rule: rule, context: h.context(roots: [root], apps: apps))
-            #expect(verdict == .allow)
+            #expect(verdict.isAllowed)
             #expect(apps.owners.isEmpty)
         }
     }
@@ -437,7 +437,7 @@ struct SafetyRulesTests {
             #expect(
                 try await h.verdict(for: appleItem, scanRoot: apple, rule: rule, context: context)
                     == .deny(.outsideRoots))
-            #expect(try await h.verdict(for: otherItem, scanRoot: other, rule: rule, context: context) == .allow)
+            #expect(try await h.verdict(for: otherItem, scanRoot: other, rule: rule, context: context).isAllowed)
         }
     }
 
@@ -458,7 +458,7 @@ struct SafetyRulesTests {
             let quiet = RecordingApps(answer: .running)
             let allowed = try await h.verdict(
                 for: short, scanRoot: saved, rule: rule, context: h.context(roots: [saved], apps: quiet))
-            #expect(allowed == .allow)
+            #expect(allowed.isAllowed)
             #expect(quiet.owners.isEmpty)
         }
     }
@@ -470,7 +470,7 @@ struct SafetyRulesTests {
             let rule = h.rule(guards: Guards(owners: [.bundleID("com.example.Tool")]), roots: [spec])
             let item = try h.tree.addFile("home/Library/Caches/a.txt")
             let apps = RecordingApps(answer: .notRunning)
-            #expect(try await h.verdict(for: item, rule: rule, context: h.context(apps: apps)) == .allow)
+            #expect(try await h.verdict(for: item, rule: rule, context: h.context(apps: apps)).isAllowed)
             #expect(apps.owners == [.bundleID("com.example.Tool")])
         }
     }
@@ -576,7 +576,7 @@ struct SafetyRulesTests {
             defer { setFlags(folder, 0) }
             let verdict = try await h.verdict(for: folder)
             #expect(verdict == .deny(.macOSProtected))
-            #expect(verdict != .allow)
+            #expect(!verdict.isAllowed)
             #expect(DenyReason.macOSProtected.userMessage == "Protected by macOS")
         }
     }
@@ -609,7 +609,7 @@ struct SafetyRulesTests {
             try h.tree.addFile("home/Installers/Foo.framework/Info.plist")
 
             let allowing = h.context(roots: [installers], allowWholeBundle: true)
-            #expect(try await h.verdict(for: app, scanRoot: installers, context: allowing) == .allow)
+            #expect(try await h.verdict(for: app, scanRoot: installers, context: allowing).isAllowed)
             #expect(try await h.verdict(for: inner, scanRoot: installers, context: allowing) == .deny(.insideBundle))
             #expect(
                 try await h.verdict(for: framework, scanRoot: installers, context: allowing) == .deny(.insideBundle))
@@ -637,8 +637,8 @@ struct SafetyRulesTests {
             // "com.example.App" has the extension "App", which is a bundle extension.
             let inner = try h.tree.addFile("home/Library/Caches/com.example.App/data/blob.bin")
             let folder = h.tree.url(for: "home/Library/Caches/com.example.App")
-            #expect(try await h.verdict(for: folder) == .allow)
-            #expect(try await h.verdict(for: inner) == .allow)
+            #expect(try await h.verdict(for: folder).isAllowed)
+            #expect(try await h.verdict(for: inner).isAllowed)
         }
     }
 
@@ -646,8 +646,8 @@ struct SafetyRulesTests {
         try await withHarness { h in
             let file = try h.tree.addFile("home/Library/Caches/Foo.framework")
             let empty = try h.tree.addDirectory("home/Library/Caches/Bar.bundle")
-            #expect(try await h.verdict(for: file) == .allow)
-            #expect(try await h.verdict(for: empty) == .allow)
+            #expect(try await h.verdict(for: file).isAllowed)
+            #expect(try await h.verdict(for: empty).isAllowed)
         }
     }
 
@@ -685,7 +685,7 @@ struct SafetyRulesTests {
             let quiet = h.context()
             let preview = await gate.authorize(allowed, rule: rule, context: quiet)
             let clean = await gate.authorize(allowed, rule: rule, context: quiet)
-            #expect(preview == .allow)
+            #expect(preview.isAllowed)
             #expect(preview == clean)
 
             let busy = h.context(apps: FakeApps(fallback: .running))
@@ -713,7 +713,7 @@ struct SafetyRulesTests {
         try await withHarness { h in
             let file = try h.tree.addFile("home/Library/Caches/a.txt")
             let rule = h.rule(action: .deletePermanently)
-            #expect(try await h.verdict(for: file, rule: rule) == .allow)
+            #expect(try await h.verdict(for: file, rule: rule).isAllowed)
             // Every other check still applies.
             let busy = h.context(files: FakeFiles(answer: true))
             #expect(try await h.verdict(for: file, rule: rule, context: busy) == .deny(.openFiles))
@@ -740,7 +740,7 @@ struct SafetyRulesTests {
             let old = try h.tree.addFile("home/Library/Caches/old.bin", modified: h.ago(days: 30))
             let fresh = try h.tree.addFile("home/Library/Caches/fresh.bin", modified: h.ago(days: 1))
             let rule = h.rule(guards: Guards(minAge: .seconds(7 * 86_400)))
-            #expect(try await h.verdict(for: old, rule: rule) == .allow)
+            #expect(try await h.verdict(for: old, rule: rule).isAllowed)
             #expect(try await h.verdict(for: fresh, rule: rule) == .deny(.tooNew))
         }
     }
@@ -755,7 +755,7 @@ struct SafetyRulesTests {
             let rule = h.rule(guards: Guards(minAge: .seconds(7 * 86_400)))
             let oldDir = h.tree.url(for: "home/Library/Caches/oldDir")
             let mixed = h.tree.url(for: "home/Library/Caches/mixedDir")
-            #expect(try await h.verdict(for: oldDir, rule: rule) == .allow)
+            #expect(try await h.verdict(for: oldDir, rule: rule).isAllowed)
             #expect(try await h.verdict(for: mixed, rule: rule) == .deny(.tooNew))
         }
     }
@@ -775,8 +775,8 @@ struct SafetyRulesTests {
             }
             #expect(results["d4"] == .deny(.keepNewest))
             #expect(results["d3"] == .deny(.keepNewest))
-            #expect(results["d2"] == .allow)
-            #expect(results["d1"] == .allow)
+            #expect(results["d2"]?.isAllowed == true)
+            #expect(results["d1"]?.isAllowed == true)
         }
     }
 
@@ -797,7 +797,8 @@ struct SafetyRulesTests {
     private static let allReasons: [DenyReason] = [
         .infoRule, .userExcluded, .outsideRoots, .isRoot, .symlinkAncestor, .insideBundle, .macOSProtected,
         .changedSinceScan, .missing, .tooNew, .unknownAge, .keepNewest, .ownerOpen("Slack"), .ownerUnknown,
-        .openFiles, .openFilesUnknown, .probeFailed("getattrlist: Permission denied (errno 13)"),
+        .openFiles, .openFilesUnknown, .editedAfterDownload, .trackedByGit, .notAppleInstaller,
+        .probeFailed("getattrlist: Permission denied (errno 13)"),
         .protectedPath(.system), .protectedPath(.root), .protectedPath(.appleData),
         .protectedPath(.syncAndIdentity), .protectedPath(.fragileAppleCache), .protectedPath(.agentState),
         .protectedPath(.liveStore), .protectedPath(.licensedVendor), .protectedPath(.passwordManager),
