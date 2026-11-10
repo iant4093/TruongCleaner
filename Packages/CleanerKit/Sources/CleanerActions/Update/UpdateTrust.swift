@@ -13,10 +13,13 @@ public struct UpdateTrust: Sendable {
 
     /// Raw 32-byte Ed25519 public keys, standard base64, that the app trusts.
     ///
-    /// Empty until the release owner creates the signing key (`scripts/release-key.swift generate`)
-    /// and the orchestrator adds its public half here. While it is empty, every update is refused
-    /// (fail closed). Adding a second key before retiring the first allows key rotation.
-    public static let productionPublicKeys: [String] = []
+    /// The public half of the release owner's signing key (`scripts/release-key.swift generate`).
+    /// If this list were empty, every update would be refused (fail closed). Adding a second key
+    /// before retiring the first allows key rotation.
+    public static let productionPublicKeys: [String] = [
+        // Ian's release key, created 2026-11-10 with `swift scripts/release-key.swift generate`.
+        "pXOVZv2innD/hYJWcZzApiY/QbiqiHYfsRI5f4JGf5k=",
+    ]
 
     /// The trust the shipping app uses, built from ``productionPublicKeys``.
     public static let production = UpdateTrust(base64Keys: productionPublicKeys)

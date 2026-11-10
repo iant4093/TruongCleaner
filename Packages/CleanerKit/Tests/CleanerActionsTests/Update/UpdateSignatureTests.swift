@@ -318,4 +318,14 @@ struct UpdateSignatureTests {
             #expect(updateFolders(in: root).isEmpty)
         }
     }
+
+    /// A shipping build with no usable key could never update itself again.
+    @Test func production_trustsEveryListedKeyAndAtLeastOne() throws {
+        #expect(!UpdateTrust.productionPublicKeys.isEmpty)
+        for text in UpdateTrust.productionPublicKeys {
+            let data = try #require(Data(base64Encoded: text))
+            #expect(data.count == 32)
+            #expect((try? Curve25519.Signing.PublicKey(rawRepresentation: data)) != nil)
+        }
+    }
 }
