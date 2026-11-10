@@ -251,11 +251,12 @@ public struct SafetyGate: Sendable {
     }
 
     /// Newest modification date inside the item (the item's own date for a file or link).
-    /// Nil when the date cannot be known completely: partial walk, unreadable folder, error.
+    /// Nil when the date cannot be known completely: partial walk, unreadable folder, error, or the task
+    /// was cancelled while it waited for a walker thread of the shared budget.
     private func newestModification(of item: URL, info: stat) async -> Date? {
         guard GateSystem.isDirectory(info) else { return GateSystem.modificationDate(info) }
         let options = WalkOptions(maxWorkers: 2, totalsDepth: 0, topFilesCount: 0, limit: Self.ageWalkLimit)
-        guard let result = try? await BulkWalker.walk(item, options: options) else { return nil }
+        guard let result = try? await SharedBudgetWalk.walk(item, options: options) else { return nil }
         guard !result.partial, result.deniedCount == 0, result.otherErrors == 0 else { return nil }
         return result.nodes.first?.newestModification
     }

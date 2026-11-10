@@ -130,14 +130,19 @@ extension WorkerBudget {
 }
 
 /// Runs a walk on a lane of the process-wide budget. Used by every entry point except the scan engine,
-/// which manages its lanes itself.
-enum SharedBudgetWalk {
-    /// Walks `root` once a thread of ``WorkerBudget/current`` is free; the walk may grow into more threads
+/// which manages its lanes itself. Public so that `CleanerActions` (the safety gate's age check) shares
+/// the same thread budget instead of starting its own threads.
+public enum SharedBudgetWalk {
+    /// Walks `root` once a thread of the shared budget is free; the walk may grow into more threads
     /// while the budget has room, up to `options.maxWorkers`.
     ///
+    /// - Parameters:
+    ///   - root: The folder to walk.
+    ///   - options: Walk settings. Any thread budget already set in them is replaced by the shared one.
+    ///   - progress: Called with progress snapshots, as for ``BulkWalker/walk(_:options:progress:)``.
     /// - Throws: `CancellationError` if the calling task was cancelled while waiting for a thread,
     ///   otherwise what ``BulkWalker/walk(_:options:progress:)`` throws.
-    static func walk(
+    public static func walk(
         _ root: URL, options: WalkOptions, progress: (@Sendable (WalkProgress) -> Void)? = nil
     ) async throws -> WalkResult {
         let budget = WorkerBudget.current

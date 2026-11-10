@@ -51,10 +51,9 @@ public enum LeftoverMatcher {
                     guard subject.keepsAfterChildCheck(candidate, children: children) else { continue }
                     // A folder that may hold something nobody can rebuild is offered but not selected.
                     if candidate.tier == .safe,
-                        let warning = warning(children: children, entry: entry)
+                        let warning = warning(children: children, contents: entry.contents)
                     {
-                        candidate.tier = .review
-                        candidate.evidence = .withWarning(warning, candidate.evidence)
+                        candidate = demoted(candidate, because: warning)
                     }
                 }
                 if place.scope == .system { candidate.tier = .info }
@@ -88,19 +87,54 @@ public enum LeftoverMatcher {
         }
     }
 
+    /// Applies what the caller measured inside a matched folder to a candidate, after the matcher has run.
+    ///
+    /// The matcher itself judges a folder from its direct children's names and from `LeftoverEntry.contents`
+    /// when the caller had them. A caller that measures only after matching (the finder sizes a folder once
+    /// it is a candidate) uses this to apply the same rules: a `.safe` user-scope candidate whose
+    /// `contents` show a virtual machine or disk image, documents, or more than ``largeFolderBytes`` becomes
+    /// `.review`, and its evidence gains the matching ``LeftoverWarning`` (`.withWarning`).
+    ///
+    /// It only ever makes a candidate stricter. A `.review` or `.info` candidate, a `/Library` candidate and
+    /// one that already carries a warning come back unchanged, so a warning is never wrapped twice. Fields of
+    /// `contents` that are nil prove nothing.
+    ///
+    /// - Parameters:
+    ///   - candidate: A candidate from ``match(app:inventory:listings:childNames:)``.
+    ///   - contents: What was measured inside the folder.
+    ///   - isComplete: False when the measurement was partial (some of the folder could not be read). A
+    ///     folder that shows no other warning is then `.review` with ``LeftoverWarning/unreadable``.
+    /// - Returns: The candidate, demoted to `.review` when `contents` call for it.
+    public static func reviewed(
+        _ candidate: LeftoverCandidate, contents: LeftoverContents, isComplete: Bool = true
+    ) -> LeftoverCandidate {
+        guard candidate.tier == .safe, candidate.place.scope == .user else { return candidate }
+        if case .withWarning = candidate.evidence { return candidate }
+        // No child names are given here, so only the contents (and `isComplete`) can raise a warning.
+        guard let warning = warning(children: isComplete ? [] : nil, contents: contents) else { return candidate }
+        return demoted(candidate, because: warning)
+    }
+
+    private static func demoted(_ candidate: LeftoverCandidate, because warning: LeftoverWarning) -> LeftoverCandidate {
+        var result = candidate
+        result.tier = .review
+        result.evidence = .withWarning(warning, candidate.evidence)
+        return result
+    }
+
     /// Why a matched folder must be looked at before it is removed, or nil when nothing says so.
     ///
     /// Judged from the names directly inside it (`children`) and from what the caller measured
-    /// (`entry.contents`). Names are checked first, then documents, size and unreadability. A folder
+    /// (`contents`). Names are checked first, then documents, size and unreadability. A folder
     /// that nobody measured shows only what its direct children's names give away.
-    private static func warning(children: [String]?, entry: LeftoverEntry) -> LeftoverWarning? {
+    private static func warning(children: [String]?, contents: LeftoverContents?) -> LeftoverWarning? {
         if children?.contains(where: { isVirtualMachineOrDiskImage(name: $0) }) == true
-            || entry.contents?.hasDiskImages == true
+            || contents?.hasDiskImages == true
         {
             return .virtualMachinesOrDiskImages
         }
-        if entry.contents?.hasDocuments == true { return .documents }
-        if let bytes = entry.contents?.allocatedBytes, bytes > largeFolderBytes { return .large }
+        if contents?.hasDocuments == true { return .documents }
+        if let bytes = contents?.allocatedBytes, bytes > largeFolderBytes { return .large }
         if children == nil { return .unreadable }
         return nil
     }

@@ -106,4 +106,91 @@ struct LeftoverReviewTests {
         let evidence = LeftoverEvidence.withWarning(.documents, .exactBundleID("com.example.Foo"))
         #expect(evidence.text.hasPrefix(LeftoverEvidence.exactBundleID("com.example.Foo").text))
     }
+
+    // MARK: Brief 9.4: contents measured after matching (`LeftoverMatcher.reviewed`)
+
+    private static func candidate(
+        tier: Tier = .safe, evidence: LeftoverEvidence = .exactBundleID("com.example.Foo"), scope: LeftoverScope = .user
+    ) -> LeftoverCandidate {
+        LeftoverCandidate(
+            place: LeftoverPlace(scope: scope, folder: .containers), name: "com.example.Foo", tier: tier,
+            evidence: evidence)
+    }
+
+    private static let gigabyte = LeftoverMatcher.largeFolderBytes
+
+    @Test(arguments: [
+        (LeftoverContents(allocatedBytes: LeftoverMatcher.largeFolderBytes + 1, hasDocuments: false), Tier.review, "It is larger than 1 GB."),
+        (LeftoverContents(allocatedBytes: 10, hasDocuments: true), .review, "Contains documents."),
+        (
+            LeftoverContents(allocatedBytes: 10, hasDocuments: false, hasDiskImages: true), .review,
+            "Contains virtual machines or disk images."
+        ),
+        // A disk image wins over documents and size.
+        (
+            LeftoverContents(allocatedBytes: LeftoverMatcher.largeFolderBytes * 5, hasDocuments: true, hasDiskImages: true), .review,
+            "Contains virtual machines or disk images."
+        ),
+        (LeftoverContents(allocatedBytes: LeftoverMatcher.largeFolderBytes, hasDocuments: false, hasDiskImages: nil), .safe, ""),
+        (LeftoverContents(allocatedBytes: 4_096, hasDocuments: false, hasDiskImages: false), .safe, ""),
+        (LeftoverContents(), .safe, ""),
+    ] as [(LeftoverContents, Tier, String)])
+    func reviewedAppliesTheContents(contents: LeftoverContents, tier: Tier, text: String) {
+        let result = LeftoverMatcher.reviewed(Self.candidate(), contents: contents)
+        #expect(result.tier == tier)
+        if tier == .safe {
+            #expect(result == Self.candidate())
+        } else {
+            #expect(result.evidence.text == "\(LeftoverEvidence.exactBundleID("com.example.Foo").text) \(text)")
+        }
+    }
+
+    @Test func reviewedNeverPromotesAReviewOrInfoCandidate() {
+        let calm = LeftoverContents(allocatedBytes: 1, hasDocuments: false, hasDiskImages: false)
+        for tier in [Tier.review, .info] {
+            let input = Self.candidate(tier: tier)
+            #expect(LeftoverMatcher.reviewed(input, contents: calm) == input)
+            #expect(LeftoverMatcher.reviewed(input, contents: calm, isComplete: false) == input)
+        }
+    }
+
+    @Test func reviewedDoesNotWrapAWarningTwice() {
+        let warned = Self.candidate(
+            tier: .safe, evidence: .withWarning(.virtualMachinesOrDiskImages, .exactBundleID("com.example.Foo")))
+        let contents = LeftoverContents(allocatedBytes: Self.gigabyte * 2, hasDocuments: true, hasDiskImages: true)
+        #expect(LeftoverMatcher.reviewed(warned, contents: contents) == warned)
+
+        let once = LeftoverMatcher.reviewed(Self.candidate(), contents: contents)
+        #expect(LeftoverMatcher.reviewed(once, contents: contents) == once)
+        if case .withWarning(_, let base) = once.evidence {
+            if case .withWarning = base { Issue.record("wrapped twice") }
+        } else {
+            Issue.record("no warning")
+        }
+    }
+
+    @Test func reviewedLeavesSystemLibraryCandidatesAlone() {
+        let contents = LeftoverContents(allocatedBytes: Self.gigabyte * 2, hasDocuments: true, hasDiskImages: true)
+        let input = Self.candidate(tier: .safe, scope: .system)
+        #expect(LeftoverMatcher.reviewed(input, contents: contents) == input)
+    }
+
+    @Test func aPartialMeasurementIsReviewButOnlyWhenNothingElseWarns() {
+        let calm = LeftoverContents(allocatedBytes: 1, hasDocuments: false, hasDiskImages: nil)
+        let partial = LeftoverMatcher.reviewed(Self.candidate(), contents: calm, isComplete: false)
+        #expect(partial.tier == .review)
+        #expect(partial.evidence.text.hasSuffix("What is inside could not be read."))
+
+        let docs = LeftoverContents(allocatedBytes: 1, hasDocuments: true, hasDiskImages: nil)
+        let both = LeftoverMatcher.reviewed(Self.candidate(), contents: docs, isComplete: false)
+        #expect(both.evidence.text.hasSuffix("Contains documents."))
+    }
+
+    @Test func reviewedAndMatchGiveTheSameAnswerForTheSameContents() {
+        let contents = LeftoverContents(allocatedBytes: Self.gigabyte + 1, hasDocuments: false, hasDiskImages: false)
+        let viaMatch = Fixtures.match(Fixtures.app(), Self.container(contents)).candidates.first
+        let plain = Fixtures.match(Fixtures.app(), Self.container()).candidates.first
+        #expect(plain?.tier == .safe)
+        #expect(plain.map { LeftoverMatcher.reviewed($0, contents: contents) } == viaMatch)
+    }
 }

@@ -338,6 +338,78 @@ struct LeftoverFinderTests {
         }
     }
 
+    // MARK: Contents measured after matching (brief 9.4)
+
+    @Test func aContainerWithDocumentsIsReview() async throws {
+        try await withAppsHarness { harness in
+            try addFoo(harness)
+            try harness.tree.addFile("home/Library/Containers/com.example.Foo/Data/Documents/a.txt", size: 100)
+            let report = try await find(harness)
+            let leftover = try #require(report.leftovers.first)
+            #expect(leftover.name == "com.example.Foo")
+            #expect(leftover.tier == .review)
+            #expect(leftover.evidence.text.hasSuffix("Contains documents."))
+        }
+    }
+
+    @Test func aContainerWithOnlyCachesStaysSafe() async throws {
+        try await withAppsHarness { harness in
+            try addFoo(harness)
+            try harness.tree.addFile("home/Library/Containers/com.example.Foo/Data/Library/Caches/x", size: 100)
+            let leftover = try #require(try await find(harness).leftovers.first)
+            #expect(leftover.tier == .safe)
+            #expect(leftover.evidence == .exactBundleID("com.example.Foo"))
+        }
+    }
+
+    @Test func anEmptyDocumentsFolderStaysSafe() async throws {
+        try await withAppsHarness { harness in
+            try addFoo(harness)
+            try harness.tree.addFile("home/Library/Containers/com.example.Foo/Data/Library/x", size: 100)
+            try harness.tree.addDirectory("home/Library/Containers/com.example.Foo/Data/Documents")
+            #expect(try await find(harness).leftovers.first?.tier == .safe)
+        }
+    }
+
+    @Test func aDataFolderThatIsALinkIsNotFollowedAndNotCountedAsDocuments() async throws {
+        try await withAppsHarness { harness in
+            try addFoo(harness)
+            let outside = try harness.tree.addFile("elsewhere/Documents/precious.txt", size: 100)
+            try harness.tree.addDirectory("home/Library/Containers/com.example.Foo")
+            try harness.tree.addSymlink(
+                "home/Library/Containers/com.example.Foo/Data",
+                destination: outside.deletingLastPathComponent().deletingLastPathComponent())
+            let leftover = try #require(try await find(harness).leftovers.first)
+            #expect(leftover.tier == .safe)
+            #expect(FileManager.default.fileExists(atPath: outside.path(percentEncoded: false)))
+        }
+    }
+
+    @Test func incident_dockerRawNestedDeepInAContainerIsReview() async throws {
+        try await withAppsHarness { harness in
+            try addFoo(harness)
+            // The matcher sees only `Data` among the direct children; the image is four levels down.
+            try harness.tree.addFile("home/Library/Containers/com.example.Foo/Data/vms/0/data/Docker.raw", size: 4_096)
+            try harness.tree.addFile("home/Library/Containers/com.example.Foo/Data/Library/small.txt", size: 100)
+            let leftover = try #require(try await find(harness).leftovers.first)
+            #expect(leftover.tier == .review)
+            #expect(leftover.evidence.text.hasSuffix("Contains virtual machines or disk images."))
+        }
+    }
+
+    @Test func aFolderMeasuredOnlyInPartIsReviewNotSafe() async throws {
+        try await withAppsHarness { harness in
+            try addFoo(harness)
+            try harness.tree.addFile("home/Library/Caches/com.example.Foo/open.bin", size: 100)
+            try harness.tree.addFile("home/Library/Caches/com.example.Foo/locked/x", size: 100)
+            try harness.tree.setPermissions("home/Library/Caches/com.example.Foo/locked", mode: 0o000)
+            let leftover = try #require(try await find(harness).leftovers.first)
+            #expect(leftover.sizeIsAtLeast)
+            #expect(leftover.tier == .review)
+            #expect(leftover.evidence.text.hasSuffix("What is inside could not be read."))
+        }
+    }
+
     // MARK: /Library (information only)
 
     @Test func libraryItemsAreInformationOnlyAndNeverFindings() async throws {

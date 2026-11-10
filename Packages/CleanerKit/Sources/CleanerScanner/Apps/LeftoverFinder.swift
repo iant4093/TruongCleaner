@@ -139,14 +139,15 @@ public enum LeftoverFinder {
                         allocatedBytes: measured?.allocatedBytes))
                 continue
             }
-            guard let measured = await measure(entry) else {
+            guard let measured = await measure(entry, lookForDiskImages: candidate.tier == .safe) else {
                 unmeasured += 1
                 continue
             }
+            let reviewed = reviewedAfterMeasuring(candidate, entry: entry, measured: measured)
             leftovers.append(
                 Leftover(
                     finding: measured.finding(for: entry.url),
-                    place: candidate.place, tier: candidate.tier, evidence: candidate.evidence,
+                    place: candidate.place, tier: reviewed.tier, evidence: reviewed.evidence,
                     sizeIsAtLeast: measured.isPartial))
         }
 
@@ -211,6 +212,59 @@ public enum LeftoverFinder {
 
     // MARK: Measuring
 
+    /// Applies what was measured inside a user-scope folder to its candidate (`LeftoverMatcher.reviewed`).
+    ///
+    /// The matcher judged the folder from its direct children's names. Docker's `Docker.raw`, for one, sits
+    /// at `Data/vms/0/data/Docker.raw`, so only the measurement can see it. The check reads these facts:
+    /// - the allocated size of the whole folder;
+    /// - whether `Data/Documents` holds anything (read without following links; nil when it cannot be read);
+    /// - whether one of the largest files in it is a virtual machine or disk image. The walk keeps the five
+    ///   largest files anyway, so this costs no per-file allocation. It can say "yes", never "no", so a small
+    ///   image outside the top five is left to the size check.
+    ///
+    /// A partial measurement, or an unreadable `Data/Documents`, makes the folder `.review`. A candidate is
+    /// never made less strict.
+    private static func reviewedAfterMeasuring(
+        _ candidate: LeftoverCandidate, entry: FolderEntry, measured: Measured
+    ) -> LeftoverCandidate {
+        guard candidate.tier == .safe, candidate.place.scope == .user, entry.kind == .directory else {
+            return candidate
+        }
+        let documents = hasDocuments(in: entry)
+        let contents = LeftoverContents(
+            allocatedBytes: measured.allocatedBytes, hasDocuments: documents,
+            hasDiskImages: measured.holdsDiskImage ? true : nil)
+        return LeftoverMatcher.reviewed(
+            candidate, contents: contents, isComplete: !measured.isPartial && documents != nil)
+    }
+
+    /// Whether `<container>/Data/Documents` lists at least one entry. Nothing is followed: `Data` and
+    /// `Documents` must be real folders. A missing folder is false; a folder that cannot be read in full
+    /// (and shows nothing) is nil.
+    private static func hasDocuments(in container: FolderEntry) -> Bool? {
+        let data = container.url.appending(path: "Data", directoryHint: .isDirectory)
+        let listing: FolderListing
+        switch FolderReader.read(data) {
+        case .failure(let failure): return failure.isMissing ? false : nil
+        case .success(let read): listing = read
+        }
+        guard let documents = listing.entries.first(where: { $0.name == "Documents" }) else {
+            return listing.isComplete ? false : nil
+        }
+        switch documents.kind {
+        case .symlink: return false
+        case .file: return true
+        case .other: return nil
+        case .directory:
+            switch FolderReader.read(documents.url) {
+            case .failure(let failure): return failure.isMissing ? false : nil
+            case .success(let inside):
+                if !inside.entries.isEmpty { return true }
+                return inside.isComplete ? false : nil
+            }
+        }
+    }
+
     /// A measured entry, with what a `Finding` needs.
     private struct Measured {
         var fsid: UInt64
@@ -222,6 +276,8 @@ public enum LeftoverFinder {
         var isDirectory: Bool
         var itemCount: Int
         var isPartial: Bool
+        /// True when one of the largest files inside is a virtual machine or disk image. Only set when asked for.
+        var holdsDiskImage = false
 
         func finding(for url: URL) -> Finding {
             Finding(
@@ -231,25 +287,34 @@ public enum LeftoverFinder {
         }
     }
 
-    private static func measure(_ entry: FolderEntry) async -> Measured? {
+    private static func measure(_ entry: FolderEntry, lookForDiskImages: Bool = false) async -> Measured? {
         switch entry.kind {
-        case .directory: return await measureDirectory(entry.url)
+        case .directory: return await measureDirectory(entry.url, lookForDiskImages: lookForDiskImages)
         case .file: return measureFile(entry)
         case .symlink, .other: return nil
         }
     }
 
-    private static func measureDirectory(_ url: URL) async -> Measured? {
-        let options = WalkOptions(maxWorkers: 3, totalsDepth: 0, topFilesCount: 0)
+    /// Largest files kept to look for a virtual machine or disk image among them.
+    private static let diskImageLookupCount = 5
+
+    private static func measureDirectory(_ url: URL, lookForDiskImages: Bool = false) async -> Measured? {
+        let options = WalkOptions(
+            maxWorkers: 3, totalsDepth: 0, topFilesCount: lookForDiskImages ? diskImageLookupCount : 0)
         guard let result = try? await SharedBudgetWalk.walk(url, options: options), let root = result.nodes.first else {
             return nil
+        }
+        let holdsDiskImage = result.topFiles.contains {
+            LeftoverMatcher.isVirtualMachineOrDiskImage(
+                name: $0.url.lastPathComponent, allocatedBytes: $0.allocatedBytes)
         }
         return Measured(
             fsid: root.id.fsid, fileID: root.id.fileID, flags: root.flags,
             allocatedBytes: root.allocatedBytes, privateBytes: root.privateBytes,
             newest: root.newestModification, isDirectory: true,
             itemCount: result.files + result.directories + result.symlinks,
-            isPartial: result.partial || result.deniedCount > 0 || result.otherErrors > 0)
+            isPartial: result.partial || result.deniedCount > 0 || result.otherErrors > 0,
+            holdsDiskImage: holdsDiskImage)
     }
 
     private static func measureFile(_ entry: FolderEntry) -> Measured? {

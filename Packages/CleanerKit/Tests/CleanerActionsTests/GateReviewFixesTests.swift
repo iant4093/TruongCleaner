@@ -2,9 +2,11 @@ import CleanerCore
 import CleanerTestSupport
 import Darwin
 import Foundation
+import Synchronization
 import Testing
 
 @testable import CleanerActions
+@testable import CleanerScanner
 
 /// Pre-v1.0 safety review, findings 1, 2, 6, 7 and 10: the gate's rule-specific checks and its check order.
 /// Fixture trees only.
@@ -424,5 +426,90 @@ struct GateReviewFixesTests {
         ]
         // Counted: `undated` and `undated-kind`. Not counted: older, a file, a dot-name, the item.
         #expect(SafetyGate.countNewer(siblings, than: name, ownDate: own, ownIsDirectory: true) == 2)
+    }
+
+    // MARK: Brief 9.4: the age walk uses the shared walker budget
+
+    /// Set when a gate run ends.
+    private final class DoneFlag: Sendable {
+        private let state = Mutex(false)
+        func set() { state.withLock { $0 = true } }
+        var isSet: Bool { state.withLock { $0 } }
+    }
+
+    private static let weekRule = Guards(minAge: .seconds(7 * 86_400))
+
+    /// Runs the gate in a task that sees `budget` as the shared budget, and says when it finished.
+    private static func authorizeUnder(
+        _ budget: WorkerBudget, finding: Finding, rule: Rule, context: GateContext, finished: DoneFlag
+    ) -> Task<Verdict, Never> {
+        WorkerBudget.$current.withValue(budget) {
+            Task {
+                let verdict = await SafetyGate().authorize(finding, rule: rule, context: context)
+                finished.set()
+                return verdict
+            }
+        }
+    }
+
+    @Test func ageWalk_waitsForALaneOfTheSharedBudget() async throws {
+        try await withHarness { h in
+            let folder = try h.tree.addFile("home/Library/Caches/old/a.bin", size: 10, modified: h.ago(days: 90))
+                .deletingLastPathComponent()
+            try h.tree.setModified("home/Library/Caches/old", to: h.ago(days: 90))
+            let finding = try await h.scanned(folder)
+            let rule = h.rule(guards: Self.weekRule)
+            let context = h.context()
+
+            // The test holds the only lane. A walk outside the budget would finish at once.
+            let budget = WorkerBudget(total: 1)
+            #expect(budget.tryStartLane())
+            let finished = DoneFlag()
+            let task = Self.authorizeUnder(budget, finding: finding, rule: rule, context: context, finished: finished)
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(!finished.isSet)
+            #expect(budget.used == 1)
+
+            budget.endLane()
+            let verdict = await task.value
+            #expect(verdict.isAllowed)
+            #expect(budget.used == 0)
+        }
+    }
+
+    @Test func ageWalk_cancelledWhileWaitingForALaneIsDeniedNeverAllowed() async throws {
+        try await withHarness { h in
+            let folder = try h.tree.addFile("home/Library/Caches/old/a.bin", size: 10, modified: h.ago(days: 90))
+                .deletingLastPathComponent()
+            try h.tree.setModified("home/Library/Caches/old", to: h.ago(days: 90))
+            let finding = try await h.scanned(folder)
+            let rule = h.rule(guards: Self.weekRule)
+
+            let budget = WorkerBudget(total: 1)
+            #expect(budget.tryStartLane())
+            let finished = DoneFlag()
+            let task = Self.authorizeUnder(
+                budget, finding: finding, rule: rule, context: h.context(), finished: finished)
+            try await Task.sleep(for: .milliseconds(100))
+            task.cancel()
+            #expect(await task.value == .deny(.unknownAge))
+            // The cancelled gate took no lane.
+            #expect(budget.used == 1)
+            budget.endLane()
+        }
+    }
+
+    @Test func ageWalk_aFreeLaneIsGivenBackAfterTheCheck() async throws {
+        try await withHarness { h in
+            let folder = try h.tree.addFile("home/Library/Caches/fresh/a.bin", size: 10)
+                .deletingLastPathComponent()
+            let finding = try await h.scanned(folder)
+            let budget = WorkerBudget(total: 2)
+            let finished = DoneFlag()
+            let task = Self.authorizeUnder(
+                budget, finding: finding, rule: h.rule(guards: Self.weekRule), context: h.context(), finished: finished)
+            #expect(await task.value == .deny(.tooNew))
+            #expect(budget.used == 0)
+        }
     }
 }
