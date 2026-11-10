@@ -118,4 +118,5 @@ brief in `docs/briefs/<id>.md`.
 | [x] | 9.3 | B | c | App, updater, installer fixes; version 1.0.0 |
 | [x] | 9.4 | B | | Follow-ups: leftover folders Review after measuring (documents, disk images, >1 GB, partial); gate age walk on the shared budget |
 | [x] | 9.5 | O | | CI (attest job, self-test, versioned release title and notes), safety hook, README, PLAN, RULE_CATALOG, UNINSTALLER, safety.md 16a, tasks |
-| [ ] | 9.6 | Ian | | Decide: sign `SHA256SUMS` with Ed25519 for in-app updates (safety review #3) |
+| [~] | 9.6 | B | | Signed update checksums: Ed25519 `SHA256SUMS.sig`, key in Ian's Keychain, app fails closed (safety review #3; Ian approved 2026-11-10) |
+| [ ] | 9.7 | Ian | | Run `swift scripts/release-key.swift generate`, send the public key; sign each release with `bash scripts/sign-release.sh build-N` |
