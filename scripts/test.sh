@@ -77,7 +77,9 @@ case "$mode" in
     log=build/logs/test-package.log
     status=0
     SECONDS=0
-    run_limited "$timeout_seconds" swift_test_logged --parallel || status=$?
+    # TC_TEST_PARALLEL=0 runs test cases serially (3-core CI runners: timing tests compete otherwise).
+    if [ "${TC_TEST_PARALLEL:-1}" = 0 ]; then par=(--no-parallel); else par=(--parallel); fi
+    run_limited "$timeout_seconds" swift_test_logged "${par[@]}" || status=$?
     if [ "$status" -eq 124 ]; then
       echo "FAIL: TIMEOUT after ${timeout_seconds}s (log: $log)" >&2
       exit 124
