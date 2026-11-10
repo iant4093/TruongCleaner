@@ -114,6 +114,10 @@ Download only from this repository's [Releases](https://github.com/iant4093/Truo
 To check that a download was built by this repository's CI, run
 `gh attestation verify TruongCleaner.zip --repo iant4093/TruongCleaner`.
 
+**In-app updates** (Settings > General) install only releases that carry
+`SHA256SUMS.sig`, an Ed25519 signature made with a key kept off GitHub. A new
+build shows "Not signed yet" until it is signed.
+
 ## Tech stack
 
 | Area | Technologies |

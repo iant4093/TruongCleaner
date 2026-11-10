@@ -53,6 +53,7 @@ every action, and can undo it.
 | D18 | License: **MIT** (Q4). | Same as FrankenTTY. |
 | D19 | Updates: notify-only checker, no Sparkle (Q2; superseded by D20). App Uninstaller after 1.0 (Q3; superseded by D20). Orchestrator may push to `main` (Q5). | Ian, 2026-11-06. |
 | D20 | Updates install from inside the app (Settings > General, Overview banner): download, SHA-256 check, signature check, swap the bundle, relaunch. Still no Sparkle. App Uninstaller moves into 1.0 (`docs/UNINSTALLER.md`). | Ian, 2026-11-09. |
+| D21 | In-app updates also need `SHA256SUMS.sig`: an Ed25519 signature over `SHA256SUMS`, made on Ian's Mac with a key in his login Keychain (`scripts/release-key.swift`, `scripts/sign-release.sh build-N`, which first checks the CI build attestation). The app embeds the public key (`UpdateTrust.productionPublicKeys`) and refuses unsigned or badly signed updates. CI never holds the key. `install.sh` is unchanged (it comes from the same release). | Ian, 2026-11-10 (safety review #3). |
 
 ---
 

@@ -47,7 +47,7 @@ The host policy blocks `git push` to `main` from this session. Flow:
 - Smart Clean takes ~6.5–8 s on a 1 M-file `~/Library/Caches` (budget 5 s); results stream per section.
 - Grouped `Form` on macOS 27 draws row dividers from the row edge, not the title.
 - `trash.volumes` inert. A scan root of `/` covers only the System volume (REQ-SCAN-08 mapping to `/System/Volumes/Data` not done; no shipped rule uses `/`).
-- Update authenticity rests on the GitHub account and HTTPS (SHA-256 file from the same release). Signing `SHA256SUMS` with Ed25519 waits on Ian (task 9.6).
+- In-app updates need `SHA256SUMS.sig` (D21). After each release, Ian runs `bash scripts/sign-release.sh build-N`; until then the app shows "Not signed yet". `install.sh` still trusts only the same release's `SHA256SUMS`.
 - The owner check reads every process's argv, about 25 ms per item.
 - Not hand-tested: the polite `osascript` quit in `install.sh`, and the Quit-during-clean alert.
 - Ad-hoc signing: Full Disk Access may need re-granting after each update.
